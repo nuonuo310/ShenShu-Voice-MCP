@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>沈述 · 语音气泡</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#e9d8c3;background:transparent;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;padding:10px;background:transparent}
+.shell{width:min(100%,420px)}
+.sender{display:block;margin:0 0 8px 4px;font-size:11px;letter-spacing:.18em;color:#d8c0a4}
+.bubble{display:flex;align-items:center;gap:12px;min-height:60px;padding:9px 13px;border:1px solid rgba(218,187,149,.27);border-radius:30px;background:linear-gradient(110deg,rgba(104,83,65,.44),rgba(58,48,42,.68) 65%,rgba(48,41,37,.78));box-shadow:0 8px 25px rgba(0,0,0,.12),inset 0 1px rgba(255,239,213,.06)}
+#play{width:40px;height:40px;flex:0 0 40px;border:1px solid rgba(249,225,187,.45);border-radius:50%;background:linear-gradient(135deg,#e2c9a6,#8e775f);color:#fff1d8;display:grid;place-items:center;cursor:pointer}
+#play[disabled]{opacity:.45;cursor:not-allowed}
+#play.playing{background:linear-gradient(135deg,#fff0d7,#edc59f);color:#6d5039;box-shadow:0 0 14px rgba(244,203,154,.23)}
+.glyph{display:block;width:0;height:0;margin-left:3px;border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:11px solid currentColor}
+#play.playing .glyph{width:12px;height:14px;margin:0;border:0;border-left:3px solid currentColor;border-right:3px solid currentColor}
+.wave{height:36px;flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:2px}
+.wave i{display:block;flex:1;max-width:4px;height:var(--h);border-radius:6px;background:rgba(207,184,161,.48);transition:background .12s}
+.wave i.heard{background:#ffe0b6}
+.duration{flex:0 0 auto;min-width:32px;text-align:right;font-size:12px;color:#e4d0bb;font-variant-numeric:tabular-nums}
+.favorite{flex:0 0 24px;width:24px;height:36px;padding:3px;border:0;background:transparent;color:#d8c2a5;display:grid;place-items:center;opacity:.45}
+.favorite svg{width:21px;height:21px;overflow:visible}.favorite path{fill:transparent;stroke:currentColor;stroke-width:2.4;stroke-linejoin:round}
+.status{min-height:16px;margin:8px 4px 0;font-size:11px;line-height:1.45;color:#bba893}
+.text{margin:8px 4px 0;font-size:12px;line-height:1.55;color:#d7c5b2}
+@media(max-width:360px){.bubble{gap:8px;padding-inline:10px}.wave{gap:1px}}
+@media(prefers-reduced-motion:reduce){.wave i{transition:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <span class="sender">SHEN</span>
+  <div class="bubble" role="group" aria-label="沈述的语音">
+    <button id="play" type="button" aria-label="播放语音" disabled><span class="glyph"></span></button>
+    <div class="wave" id="wave" aria-hidden="true"></div>
+    <span class="duration" id="duration">0:00</span>
+    <button class="favorite" type="button" aria-label="收藏尚未接入" disabled>
+      <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 5 C35 22 42 29 59 32 C42 35 35 42 32 59 C29 42 22 35 5 32 C22 29 29 22 32 5Z"/></svg>
+    </button>
+  </div>
+  <p class="text" id="text"></p>
+  <p class="status" id="status">等待 MCP 工具结果…</p>
+</div>
+<audio id="audio" preload="metadata" playsinline></audio>
+<script type="module">
+const heights=[9,17,26,14,22,33,18,12,29,36,19,13,23,31,16,10,22,35,25,13,19,30,17,11,24,34,20,12,26,16,9,23];
+const $=id=>document.getElementById(id);
+const wave=$("wave"),audio=$("audio"),play=$("play");
+wave.innerHTML=heights.map(h=>\`<i style="--h:\${h}px"></i>\`).join("");
+let record=null,frame=0,rpcId=0;
+const pending=new Map();
+
+const fmt=s=>Number.isFinite(s)?\`\${Math.floor(s/60)}:\${Math.floor(s%60).toString().padStart(2,"0")}\`:"0:00";
+function paint(){
+  const d=Number.isFinite(audio.duration)?audio.duration:record?.durationSeconds||0;
+  const p=d?Math.min(1,audio.currentTime/d):0;
+  $("duration").textContent=fmt(d);
+  wave.querySelectorAll("i").forEach((bar,i)=>bar.classList.toggle("heard",(i+.5)/heights.length<=p));
+  play.classList.toggle("playing",!audio.paused);
+  play.setAttribute("aria-label",audio.paused?"播放语音":"暂停语音");
+  if(!audio.paused)frame=requestAnimationFrame(paint);
+}
+function applyResponse(response){
+  const next=response?.structuredContent?.record;
+  if(!next)return;
+  record=next;
+  $("text").textContent=next.text||"";
+  $("status").textContent=next.generated?"沈述 · 已生成":"联调试听 · 固定样本（未调用 MiniMax）";
+  audio.src=next.audioUrl;
+  audio.load();
+  play.disabled=false;
+  paint();
+}
+function notify(method,params){window.parent.postMessage({jsonrpc:"2.0",method,params},"*")}
+function request(method,params){return new Promise((resolve,reject)=>{const id=++rpcId;pending.set(id,{resolve,reject});window.parent.postMessage({jsonrpc:"2.0",id,method,params},"*")})}
+window.addEventListener("message",event=>{
+  if(event.source!==window.parent)return;
+  const msg=event.data;if(!msg||msg.jsonrpc!=="2.0")return;
+  if(typeof msg.id==="number"){
+    const p=pending.get(msg.id);if(!p)return;pending.delete(msg.id);
+    msg.error?p.reject(msg.error):p.resolve(msg.result);return;
+  }
+  if(msg.method==="ui/notifications/tool-result")applyResponse(msg.params);
+},{passive:true});
+(async()=>{
+  try{
+    await request("ui/initialize",{appInfo:{name:"shenshu-voice-bubble",version:"0.2.0"},appCapabilities:{},protocolVersion:"2026-01-26"});
+    notify("ui/notifications/initialized",{});
+  }catch{$("status").textContent="MCP Apps UI 初始化失败。"}
+})();
+play.addEventListener("click",async()=>{
+  try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.generated?"沈述 · 已生成":"联调试听 · 固定样本（未调用 MiniMax）"}
+  catch{$("status").textContent="音频播放失败。"}paint();
+});
+audio.addEventListener("play",()=>{cancelAnimationFrame(frame);paint()});
+audio.addEventListener("pause",()=>{cancelAnimationFrame(frame);paint()});
+audio.addEventListener("ended",()=>{cancelAnimationFrame(frame);paint()});
+audio.addEventListener("loadedmetadata",paint);
+audio.addEventListener("error",()=>{$("status").textContent="固定试听音频加载失败。"});
+paint();
+</script>
+</body>
+</html>
