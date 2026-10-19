@@ -57,13 +57,23 @@ try {
   const names = listing.result?.tools?.map(x=>x.name) || [];
   assert.ok(names.includes("preview_shenshu_voice"),"existing voice fixture tool missing");
   assert.ok(names.includes("preview_inline_audio"),"inline fixture tool missing");
+  assert.ok(names.includes("preview_hosted_tone"),"hosted fixture tool missing");
   assert.ok(!names.includes("speak_shenshu"),"paid tool must remain inaccessible");
   const call = await rpc(3,"tools/call",{name:"preview_inline_audio",arguments:{}});
   assert.equal(call.result?.structuredContent?.record?.source,"tone-fixture");
   const decoded = Buffer.from(call.result.structuredContent.record.audioBase64,"base64");
   assert.equal(decoded.subarray(0,4).toString("ascii"),"RIFF");
   assert.equal(decoded.length,22444);
-  console.log("MCP tools/list and inline audio tools/call PASS");
+  const toneRequest=await fetch(base+"/test-tone.wav");
+  assert.equal(toneRequest.status,200);
+  assert.match(toneRequest.headers.get("content-type")||"",/audio\/wav/);
+  const tone=Buffer.from(await toneRequest.arrayBuffer());
+  assert.equal(tone.length,22444);
+  assert.equal(tone.subarray(0,4).toString("ascii"),"RIFF");
+  const hosted=await rpc(4,"tools/call",{name:"preview_hosted_tone",arguments:{}});
+  assert.equal(hosted.result?.structuredContent?.record?.source,"hosted-tone");
+  assert.equal(hosted.result?.structuredContent?.record?.audioUrl,"https://shenshu-voice-mcp.onrender.com/test-tone.wav");
+  console.log("MCP tools/list and inline + hosted audio tools/call PASS");
 
 } finally {
   child.kill("SIGTERM");
