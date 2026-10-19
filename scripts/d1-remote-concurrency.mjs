@@ -12,9 +12,14 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import { D1_RESERVE_SQL } from "../src/d1-budget-store.js";
 
 const run = promisify(execFile);
+// Use Node to launch the locally installed Wrangler JS, avoiding Windows .cmd
+// spawning differences. No global executable, shell, or auto-install needed.
+const WRANGLER_JS = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url));
 const DB_NAME = "shenshu-voice-budget-test";
 const flag = process.argv.includes("--execute-remote");
 const attempts = 8;
@@ -46,8 +51,9 @@ function queryCount() {
 async function remote(sql) {
   // Never print stdout/stderr from Wrangler; they may include account context.
   // One invocation, no retry. Requires explicit operator opt-in.
-  const { stdout } = await run("npx", [
-    "--no-install", "wrangler", "d1", "execute", DB_NAME,
+  if (!existsSync(WRANGLER_JS)) throw Error("local_wrangler_not_installed");
+  const { stdout } = await run(process.execPath, [
+    WRANGLER_JS, "d1", "execute", DB_NAME,
     "--remote", "--json", "--command", sql,
   ], { timeout: 60_000, maxBuffer: 2_000_000 });
   let records;
