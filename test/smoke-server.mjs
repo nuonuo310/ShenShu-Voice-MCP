@@ -43,6 +43,28 @@ try {
   const data = await initialize.json();
   assert.ok(data.result?.serverInfo, "missing MCP initialize result");
   console.log("MCP HTTP initialize PASS");
+
+  async function rpc(id, method, params = {}) {
+    const response = await fetch(base + "/mcp", {
+      method:"POST",
+      headers:{"content-type":"application/json","accept":"application/json, text/event-stream"},
+      body:JSON.stringify({jsonrpc:"2.0",id,method,params}),
+    });
+    assert.equal(response.status,200,"MCP RPC status "+method);
+    return await response.json();
+  }
+  const listing = await rpc(2,"tools/list");
+  const names = listing.result?.tools?.map(x=>x.name) || [];
+  assert.ok(names.includes("preview_shenshu_voice"),"existing voice fixture tool missing");
+  assert.ok(names.includes("preview_inline_audio"),"inline fixture tool missing");
+  assert.ok(!names.includes("speak_shenshu"),"paid tool must remain inaccessible");
+  const call = await rpc(3,"tools/call",{name:"preview_inline_audio",arguments:{}});
+  assert.equal(call.result?.structuredContent?.record?.source,"tone-fixture");
+  const decoded = Buffer.from(call.result.structuredContent.record.audioBase64,"base64");
+  assert.equal(decoded.subarray(0,4).toString("ascii"),"RIFF");
+  assert.equal(decoded.length,22444);
+  console.log("MCP tools/list and inline audio tools/call PASS");
+
 } finally {
   child.kill("SIGTERM");
 }
