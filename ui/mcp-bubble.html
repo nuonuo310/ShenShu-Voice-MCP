@@ -74,7 +74,7 @@ function inlineAudioUrl(next){
     throw Error("invalid_inline_audio");
   const bytes=new Uint8Array(raw.length);
   for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
-  return URL.createObjectURL(new Blob([bytes],{type:"audio/wav"}));
+  return "data:audio/wav;base64," + next.audioBase64;
 }
 function applyResponse(response){
   const next=response?.structuredContent?.record;
@@ -90,7 +90,6 @@ function applyResponse(response){
     let target;
     if(next.source==="tone-fixture"&&next.generated===false&&next.audioBase64){
       target=inlineAudioUrl(next);
-      objectUrl=target;
       $("status").textContent="离线提示音测试（并非沈述语音，不扣积分）";
     }else if(next.source==="fixture"&&next.generated===false&&
        typeof next.audioUrl==="string"&&next.audioUrl.startsWith("https://")){
