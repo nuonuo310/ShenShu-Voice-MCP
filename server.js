@@ -12,6 +12,8 @@ import { checkText } from "./src/contract.js";
 import { makeInlineToneFixture } from "./src/inline-fixture.js";
 
 const MCP_PATH = "/mcp";
+const TONE_PATH = "/test-tone.wav";
+const PUBLIC_TONE_URL = "https://shenshu-voice-mcp.onrender.com/test-tone.wav";
 const RESOURCE_URI = "ui://shenshu/voice-bubble-v1.html";
 const FIXTURE_AUDIO_URL =
   "https://raw.githubusercontent.com/nuonuo310/ShenShu-Voice/main/public/audio/first-english.mp3";
@@ -56,7 +58,7 @@ export function createShenShuServer() {
               prefersBorder: false,
               csp: {
                 connectDomains: [],
-                resourceDomains: ["https://raw.githubusercontent.com"],
+                resourceDomains: ["https://raw.githubusercontent.com", "https://shenshu-voice-mcp.onrender.com"],
               },
             },
           },
@@ -145,6 +147,25 @@ export function createShenShuServer() {
     },
   );
 
+  registerAppTool(server,"preview_hosted_tone",{
+    title:"Test HTTPS WAV playback",
+    description:"A fixed 0.7-second non-voice test tone served over HTTPS, without MiniMax or billing.",
+    inputSchema:{},
+    outputSchema:{record:z.object({
+      id:z.string(),title:z.string(),text:z.string(),
+      audioUrl:z.string().url(),durationSeconds:z.number(),
+      voiceLabel:z.string(),generated:z.literal(false),source:z.literal("hosted-tone")
+    })},
+    _meta:{ui:{resourceUri:RESOURCE_URI}}
+  },async()=>({
+    content:[{type:"text",text:"HTTPS 0.7-second test tone only. Not ShenShu speech. No MiniMax credits."}],
+    structuredContent:{record:{
+      id:"hosted_tone_001",title:"HTTPS 音频测试",text:"这是 HTTPS 测试提示音，不是沈述语音。",
+      audioUrl:PUBLIC_TONE_URL,durationSeconds:0.7,
+      voiceLabel:"测试音频",generated:false,source:"hosted-tone"
+    }}
+  }));
+
   return server;
 }
 
@@ -168,6 +189,19 @@ export const httpServer = createHttpServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === TONE_PATH) {
+    const tone = Buffer.from(makeInlineToneFixture().audioBase64,"base64");
+    res.writeHead(200,{
+      "Content-Type":"audio/wav",
+      "Content-Length":String(tone.length),
+      "Cache-Control":"public, max-age=60",
+      "Access-Control-Allow-Origin":"*",
+      "X-Content-Type-Options":"nosniff",
+      "Accept-Ranges":"none"
+    });
+    res.end(tone);
+    return;
+  }
   if (req.method === "GET" && url.pathname === "/") {
     res
       .writeHead(200, { "content-type": "text/plain; charset=utf-8" })
