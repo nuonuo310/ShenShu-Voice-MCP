@@ -20,4 +20,7 @@ jobs:
           cache: npm
           cache-dependency-path: package.json
       - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: node --check server.js
+      - run: node --check src/minimax-adapter.js
       - run: npm test
+      - run: node test/smoke-server.mjs
