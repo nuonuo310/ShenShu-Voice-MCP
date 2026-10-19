@@ -59,7 +59,7 @@ export async function synthesizeMiniMax({
     const response = await fetchImpl(MINIMAX_ENDPOINT, {
       method: "POST",
       headers: {
-        Authorization: \`Bearer \${apiKey.trim()}\`,
+        Authorization: `Bearer ${apiKey.trim()}`,
         "Content-Type": "application/json; charset=utf-8",
       },
       body: JSON.stringify(body),
