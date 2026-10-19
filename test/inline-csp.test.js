@@ -6,8 +6,8 @@ test("inline preview uses CSP-supported data URI rather than blob:", async () =>
   const ui=await readFile(new URL("../ui/mcp-bubble.html",import.meta.url),"utf8");
   assert.match(ui,/data:audio\/wav;base64,/);
   assert.doesNotMatch(ui,/URL\.createObjectURL/);
-  assert.match(ui,/raw\.slice\(0,4\)===?"RIFF"/);
-  assert.match(ui,/raw\.slice\(8,12\)===?"WAVE"/);
+  assert.ok(ui.includes('raw.slice(0,4)!=="RIFF"'));
+  assert.ok(ui.includes('raw.slice(8,12)!=="WAVE"'));
   assert.match(ui,/next\.source==="fixture"/);
 });
 
