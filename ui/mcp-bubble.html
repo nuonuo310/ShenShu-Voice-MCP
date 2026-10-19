@@ -61,10 +61,6 @@ function paint(){
   play.setAttribute("aria-label",audio.paused?"播放语音":"暂停语音");
   if(!audio.paused)frame=requestAnimationFrame(paint);
 }
-let objectUrl=null;
-function releaseObjectUrl(){
-  if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
-}
 function inlineAudioUrl(next){
   if(next.audioMimeType!=="audio/wav"||typeof next.audioBase64!=="string" ||
      next.audioBase64.length>3_000_000||next.audioBase64.length<100||
@@ -82,7 +78,6 @@ function applyResponse(response){
   audio.pause();
   audio.removeAttribute("src");
   audio.load();
-  releaseObjectUrl();
   play.disabled=true;
   record=null;
   $("text").textContent=typeof next.text==="string"?next.text:"";
@@ -104,11 +99,9 @@ function applyResponse(response){
     play.disabled=false;
   }catch{
     $("status").textContent="暂不支持此音频格式，已拒绝播放。";
-    releaseObjectUrl();
   }
   paint();
 }
-window.addEventListener("pagehide",releaseObjectUrl);
 
 function notify(method,params){window.parent.postMessage({jsonrpc:"2.0",method,params},"*")}
 function request(method,params){return new Promise((resolve,reject)=>{const id=++rpcId;pending.set(id,{resolve,reject});window.parent.postMessage({jsonrpc:"2.0",id,method,params},"*")})}
