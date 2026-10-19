@@ -1,3 +1,14 @@
+# 最新施工状态（2026-10-19）
+
+- **P1-MOCK 已部署并在 ChatGPT 中由用户确认听到声音**：现有 `/mcp` 注册的 `preview_shenshu_voice` 只返回固定英文样本，不调用 MiniMax。
+- **P2 付费合成内核已暂存、未开放**：`src/minimax-adapter.js` 和 `src/live-voice.js`。后者要求外部可信、一次性的授权结果；当前无 OAuth、持久额度门禁和可靠的音频交付验证，所以绝不能接到当前 No-auth `/mcp`。
+- GitHub CI 14/14 测试通过，MCP HTTP initialize smoke 通过。**不代表真实 TTS 已接通。**
+- 下一步：先验证身份与额度配额，然后验证 ChatGPT UI 音频交付，最后在用户明确批准后做单次 MiniMax 付费测试。
+
+详见 [LIVE-SECURITY-GATE](docs/LIVE-SECURITY-GATE.md)。
+
+---
+
 # ShenShu Voice MCP — isolated P0 scaffold
 
 Status: **offline contract + chat bubble preview only**. This is NOT yet a working MCP endpoint, has NO MiniMax implementation and NO ChatGPT connection. No deployment has occurred.
