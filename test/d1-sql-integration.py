@@ -65,8 +65,20 @@ class D1Contract(unittest.TestCase):
    check=sqlite3.connect(dbfile)
    count=check.execute("SELECT COUNT(*) FROM paid_voice_reservations").fetchone()[0]
    check.close()
+   self.assertGreaterEqual(sum(outcomes),1)
    self.assertLessEqual(sum(outcomes),3)
    self.assertEqual(sum(outcomes),count)
+   # After contention settles, unused slots may still be claimed once;
+   # never exceed the ceiling, regardless of how many lock refusals occurred.
+   with sqlite3.connect(dbfile) as fill:
+    for i in range(10):
+     fill.execute(SQL,(f"request_fill_{i+1000}","owner_12345","2026-10-20",3)).fetchone()
+    final=fill.execute("SELECT COUNT(*) FROM paid_voice_reservations").fetchone()[0]
+   self.assertEqual(final,3)
+ def test_global_request_id_uniqueness_across_days(self):
+  self.assertIsNotNone(self.reserve("request_1000",day="2026-10-20"))
+  self.assertIsNone(self.reserve("request_1000",day="2026-10-21"))
+  self.assertEqual(self.db.execute("SELECT COUNT(*) FROM paid_voice_reservations").fetchone()[0],1)
  def test_unique_slot_enforced_by_database(self):
   self.reserve("request_1000",limit=1)
   with self.assertRaises(sqlite3.IntegrityError):
