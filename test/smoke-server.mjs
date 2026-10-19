@@ -39,7 +39,7 @@ try {
       },
     }),
   });
-  assert.equal(initialize.status, 200, "MCP initialize: " + await initialize.text());
+  if (initialize.status !== 200) throw new Error("MCP initialize HTTP " + initialize.status + ": " + await initialize.text());
   const data = await initialize.json();
   assert.ok(data.result?.serverInfo, "missing MCP initialize result");
   console.log("MCP HTTP initialize PASS");
