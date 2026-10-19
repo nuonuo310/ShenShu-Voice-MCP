@@ -17,3 +17,24 @@ The deployed `/mcp` endpoint still only exposes the non-billable `preview_shensh
 - Keep the original Asteria-Call and Asteria-Voice-Worker unmodified.
 
 **CURRENT STATUS:** gate contract + isolated tests only. **NOT permission to enable live generation.**
+
+## P2B — PostgreSQL implementation candidate (NOT deployed)
+
+Added `db/001_paid_voice_budget.sql` and `src/postgres-budget-store.js`.
+The adapter accepts an injected PostgreSQL pool; production must supply its
+own trusted database connection and run the migration. **No database credentials
+or dependencies are configured here, and the public MCP does not import it.**
+
+A single DB transaction inserts a unique request reservation and increments a
+per-principal/day UTC counter using `INSERT ... ON CONFLICT ... DO UPDATE ...
+WHERE used < limit`. PostgreSQL's conflicting row update locks the daily
+counter for concurrent transactions. A duplicate request, daily limit refusal,
+or exception triggers rollback; reservations are never refunded after a
+successful commit because the upstream could have already billed.
+
+Offline tests verify query order, refusal paths and parameterized SQL. A real
+PostgreSQL concurrency/integration test, real OAuth identity proof, atomic
+one-use grant consumption and authenticated audio delivery remain REQUIRED
+before production. In particular, a caller-created `oneTime:true` object
+is not an acceptable authorization credential.
+
