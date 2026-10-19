@@ -9,6 +9,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 import { checkText } from "./src/contract.js";
+import { makeInlineToneFixture } from "./src/inline-fixture.js";
 
 const MCP_PATH = "/mcp";
 const RESOURCE_URI = "ui://shenshu/voice-bubble-v1.html";
@@ -98,6 +99,48 @@ export function createShenShuServer() {
           },
         ],
         structuredContent: { record },
+      };
+    },
+  );
+
+
+  registerAppTool(
+    server,
+    "preview_inline_audio",
+    {
+      title: "Test inline WAV audio delivery",
+      description: "Plays a 0.7-second synthetic 440 Hz test tone, not a voice. No MiniMax, no credits, no personal data or secrets.",
+      inputSchema: {},
+      outputSchema: {
+        record: z.object({
+          id: z.string(),
+          title: z.string(),
+          text: z.string(),
+          durationSeconds: z.number(),
+          voiceLabel: z.string(),
+          generated: z.literal(false),
+          source: z.literal("tone-fixture"),
+          audioMimeType: z.literal("audio/wav"),
+          audioBase64: z.string(),
+        }),
+      },
+      _meta: { ui: { resourceUri: RESOURCE_URI } },
+    },
+    async () => {
+      const fixture = makeInlineToneFixture();
+      return {
+        content: [{ type: "text", text: "A 0.7-second synthetic tone for transport testing only. Not ShenShu's voice; no MiniMax call." }],
+        structuredContent: {
+          record: {
+            id: "inline_tone_001",
+            title: "音频传输测试 · 提示音",
+            text: "这是模拟提示音，不是沈述的声音。",
+            ...fixture,
+            voiceLabel: "测试音频",
+            generated: false,
+            source: "tone-fixture",
+          },
+        },
       };
     },
   );
