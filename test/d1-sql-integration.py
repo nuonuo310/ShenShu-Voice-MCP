@@ -2,6 +2,7 @@
 """Actual SQLite execution tests for the Cloudflare D1 SQL contract."""
 import sqlite3
 import pathlib
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 import unittest
@@ -40,6 +41,32 @@ class D1Contract(unittest.TestCase):
   self.assertIsNone(self.reserve("request_2000",limit=1))
   self.assertIsNotNone(self.reserve("request_3000",who="friend_1234",limit=1))
   self.assertIsNotNone(self.reserve("request_4000",day="2026-10-21",limit=1))
+ def test_parallel_connections_never_exceed_three_slots(self):
+  with tempfile.TemporaryDirectory() as folder:
+   dbfile=str(pathlib.Path(folder)/"budget.db")
+   db=sqlite3.connect(dbfile)
+   db.executescript(SCHEMA)
+   db.close()
+   barrier=Barrier(8)
+   def attempt(i):
+    c=sqlite3.connect(dbfile,timeout=3)
+    try:
+     barrier.wait(timeout=3)
+     try:
+      result=c.execute(SQL,(f"request_{i+10000}","owner_12345","2026-10-20",3)).fetchone()
+      c.commit()
+      return result is not None
+     except sqlite3.OperationalError:
+      # Contention/lock timeout is a denial, not a paid approval.
+      return False
+    finally: c.close()
+   with ThreadPoolExecutor(max_workers=8) as pool:
+    outcomes=list(pool.map(attempt,range(8)))
+   check=sqlite3.connect(dbfile)
+   count=check.execute("SELECT COUNT(*) FROM paid_voice_reservations").fetchone()[0]
+   check.close()
+   self.assertLessEqual(sum(outcomes),3)
+   self.assertEqual(sum(outcomes),count)
  def test_unique_slot_enforced_by_database(self):
   self.reserve("request_1000",limit=1)
   with self.assertRaises(sqlite3.IntegrityError):
