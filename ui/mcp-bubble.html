@@ -61,17 +61,56 @@ function paint(){
   play.setAttribute("aria-label",audio.paused?"播放语音":"暂停语音");
   if(!audio.paused)frame=requestAnimationFrame(paint);
 }
+let objectUrl=null;
+function releaseObjectUrl(){
+  if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
+}
+function inlineAudioUrl(next){
+  if(next.audioMimeType!=="audio/wav"||typeof next.audioBase64!=="string" ||
+     next.audioBase64.length>3_000_000||next.audioBase64.length<100||
+     !/^[A-Za-z0-9+/]+={0,2}$/.test(next.audioBase64))throw Error("invalid_inline_audio");
+  const raw=atob(next.audioBase64);
+  if(raw.length>2*1024*1024||raw.slice(0,4)!=="RIFF"||raw.slice(8,12)!=="WAVE")
+    throw Error("invalid_inline_audio");
+  const bytes=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+  return URL.createObjectURL(new Blob([bytes],{type:"audio/wav"}));
+}
 function applyResponse(response){
   const next=response?.structuredContent?.record;
   if(!next)return;
-  record=next;
-  $("text").textContent=next.text||"";
-  $("status").textContent=next.generated?"沈述 · 已生成":"联调试听 · 固定样本（未调用 MiniMax）";
-  audio.src=next.audioUrl;
+  audio.pause();
+  audio.removeAttribute("src");
   audio.load();
-  play.disabled=false;
+  releaseObjectUrl();
+  play.disabled=true;
+  record=null;
+  $("text").textContent=typeof next.text==="string"?next.text:"";
+  try{
+    let target;
+    if(next.source==="tone-fixture"&&next.generated===false&&next.audioBase64){
+      target=inlineAudioUrl(next);
+      objectUrl=target;
+      $("status").textContent="离线提示音测试（并非沈述语音，不扣积分）";
+    }else if(next.source==="fixture"&&next.generated===false&&
+       typeof next.audioUrl==="string"&&next.audioUrl.startsWith("https://")){
+      target=next.audioUrl;
+      $("status").textContent="联调试听 · 固定英文样本（未调用 MiniMax）";
+    }else{
+      throw Error("unsupported_audio_result");
+    }
+    record=next;
+    audio.src=target;
+    audio.load();
+    play.disabled=false;
+  }catch{
+    $("status").textContent="暂不支持此音频格式，已拒绝播放。";
+    releaseObjectUrl();
+  }
   paint();
 }
+window.addEventListener("pagehide",releaseObjectUrl);
+
 function notify(method,params){window.parent.postMessage({jsonrpc:"2.0",method,params},"*")}
 function request(method,params){return new Promise((resolve,reject)=>{const id=++rpcId;pending.set(id,{resolve,reject});window.parent.postMessage({jsonrpc:"2.0",id,method,params},"*")})}
 window.addEventListener("message",event=>{
@@ -90,14 +129,14 @@ window.addEventListener("message",event=>{
   }catch{$("status").textContent="MCP Apps UI 初始化失败。"}
 })();
 play.addEventListener("click",async()=>{
-  try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.generated?"沈述 · 已生成":"联调试听 · 固定样本（未调用 MiniMax）"}
+  try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.source==="tone-fixture"?"离线提示音测试（非沈述声音）":"联调试听 · 固定英文样本（未调用 MiniMax）"}
   catch{$("status").textContent="音频播放失败。"}paint();
 });
 audio.addEventListener("play",()=>{cancelAnimationFrame(frame);paint()});
 audio.addEventListener("pause",()=>{cancelAnimationFrame(frame);paint()});
 audio.addEventListener("ended",()=>{cancelAnimationFrame(frame);paint()});
 audio.addEventListener("loadedmetadata",paint);
-audio.addEventListener("error",()=>{$("status").textContent="固定试听音频加载失败。"});
+audio.addEventListener("error",()=>{$("status").textContent="试听音频加载失败。"});
 paint();
 </script>
 </body>
