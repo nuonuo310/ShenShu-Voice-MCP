@@ -112,7 +112,7 @@ export const httpServer = createHttpServer(async (req, res) => {
     res.writeHead(400).end("missing_url");
     return;
   }
-  const url = new URL(req.url, \`http://\${req.headers.host ?? "localhost"}\`);
+  const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
 
   if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
     res.writeHead(204, {
@@ -162,6 +162,6 @@ export const httpServer = createHttpServer(async (req, res) => {
 
 if (process.env.NODE_ENV !== "test") {
   httpServer.listen(port, () => {
-    console.log(\`ShenShu Voice MCP P1-MOCK listening on http://localhost:\${port}\${MCP_PATH}\`);
+    console.log(`ShenShu Voice MCP P1-MOCK listening on http://localhost:${port}${MCP_PATH}`);
   });
 }
