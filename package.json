@@ -1,0 +1,11 @@
+{
+  "name": "shenshu-voice-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "dev": "node src/local-server.js"
+  },
+  "engines": {"node": ">=20"}
+}
