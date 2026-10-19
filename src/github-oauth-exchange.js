@@ -1,48 +1,84 @@
 /**
- * GitHub OAuth code exchange and authenticated user lookup.
- * STAGING ONLY. The returned GitHub access token MUST NOT be sent to clients,
- * tool results, logs, or persistent records. This module does not issue MCP
- * tokens, verify OAuth state, or create a paid endpoint.
+ * STAGING ONLY. GitHub OAuth exchange and identity lookup.
+ * NOT a deployed OAuth server, and NOT imported by public /mcp.
+ * Call only after durable OAuth state and initiating session were verified.
  */
-const TOKEN_URL="https://github.com/login/oauth/access_token";
-const USER_URL="https://api.github.com/user";
-const CODE=/^[A-Za-z0-9_-]{8,256}$/;
-function requireConfig(clientId,clientSecret,redirectUri){
- if(typeof clientId!=="string"||!clientId.trim()||
-    typeof clientSecret!=="string"||!clientSecret.trim()||
-    typeof redirectUri!=="string"||!redirectUri.startsWith("https://"))
-    throw Error("github_oauth_not_configured");
+const TOKEN_URL = "https://github.com/login/oauth/access_token";
+const USER_URL = "https://api.github.com/user";
+const CODE = /^[A-Za-z0-9_-]{8,256}$/;
+const MAX_RESPONSE_BYTES = 16 * 1024;
+const DEADLINE_MS = 8000;
+
+function validateConfig({clientId,clientSecret,redirectUri,expectedRedirectUri}) {
+  if (typeof clientId !== "string" || !clientId.trim() ||
+      typeof clientSecret !== "string" || !clientSecret.trim() ||
+      typeof expectedRedirectUri !== "string" ||
+      !/^https:\/\/[A-Za-z0-9.-]+(?:\/[A-Za-z0-9/_-]*)?$/.test(expectedRedirectUri) ||
+      redirectUri !== expectedRedirectUri) throw Error("github_oauth_not_configured");
 }
+
+async function jsonBounded(response, deadline) {
+  if (!response?.ok || !response.body || typeof response.body.getReader !== "function")
+    throw Error("upstream_unavailable");
+  const reader = response.body.getReader();
+  const chunks = [];
+  let n = 0;
+  try {
+    while (true) {
+      if (deadline.signal.aborted) throw Error("upstream_timeout");
+      const {done,value} = await reader.read();
+      if (done) break;
+      if (!(value instanceof Uint8Array)) throw Error("invalid_response");
+      n += value.byteLength;
+      if (n > MAX_RESPONSE_BYTES) throw Error("response_too_large");
+      chunks.push(value);
+    }
+    const data = new Uint8Array(n);
+    let off = 0;
+    for (const chunk of chunks) { data.set(chunk,off); off += chunk.byteLength; }
+    return JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(data));
+  } finally {
+    try { await reader.cancel(); } catch {}
+  }
+}
+
 export async function exchangeAndVerifyGitHubUser({
- code,clientId,clientSecret,redirectUri,fetchImpl=fetch
-}){
- requireConfig(clientId,clientSecret,redirectUri);
- if(typeof code!=="string"||!CODE.test(code))throw Error("invalid_authorization_code");
- let token;
- try{
-  const res=await fetchImpl(TOKEN_URL,{
-   method:"POST",
-   headers:{"Accept":"application/json","Content-Type":"application/json"},
-   body:JSON.stringify({client_id:clientId,client_secret:clientSecret,code,redirect_uri:redirectUri})
-  });
-  if(!res.ok)throw Error("exchange_failed");
-  const body=await res.json();
-  if(typeof body.access_token!=="string"||body.access_token.length<16||
-     body.token_type?.toLowerCase()!=="bearer")throw Error("exchange_failed");
-  token=body.access_token;
-  const userRes=await fetchImpl(USER_URL,{
-   headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+token,
-    "X-GitHub-Api-Version":"2022-11-28"}
-  });
-  if(!userRes.ok)throw Error("user_lookup_failed");
-  const user=await userRes.json();
-  // Numeric GitHub ID is less mutable than a login or email address.
-  if(!Number.isSafeInteger(user.id)||user.id<1||typeof user.login!=="string")
-   throw Error("user_lookup_failed");
-  return Object.freeze({subject:"github_id_"+user.id,login:user.login});
- }catch{
-  throw Error("github_oauth_failed");
- }finally{
-  token=undefined;
- }
+  code, clientId, clientSecret, redirectUri, expectedRedirectUri,
+  fetchImpl = fetch, timeoutMs = DEADLINE_MS
+}) {
+  validateConfig({clientId,clientSecret,redirectUri,expectedRedirectUri});
+  if (typeof code !== "string" || !CODE.test(code)) throw Error("invalid_authorization_code");
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > DEADLINE_MS)
+    throw Error("github_oauth_not_configured");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let token;
+  try {
+    const response = await fetchImpl(TOKEN_URL,{
+      method:"POST",
+      headers:{"Accept":"application/json","Content-Type":"application/json"},
+      body:JSON.stringify({client_id:clientId,client_secret:clientSecret,code,redirect_uri:expectedRedirectUri}),
+      signal:controller.signal
+    });
+    const payload = await jsonBounded(response,controller);
+    if (controller.signal.aborted || typeof payload?.access_token !== "string" ||
+        payload.access_token.length < 16 || payload.token_type?.toLowerCase() !== "bearer")
+      throw Error("invalid_exchange");
+    token = payload.access_token;
+    const userResponse = await fetchImpl(USER_URL,{
+      headers:{"Accept":"application/vnd.github+json","Authorization":"Bearer "+token,
+        "X-GitHub-Api-Version":"2022-11-28"},
+      signal:controller.signal
+    });
+    const user = await jsonBounded(userResponse,controller);
+    if (controller.signal.aborted || !Number.isSafeInteger(user?.id) || user.id < 1 ||
+        typeof user.login !== "string" || !user.login)
+      throw Error("invalid_user");
+    return Object.freeze({subject:"github_id_"+user.id,login:user.login});
+  } catch {
+    throw Error("github_oauth_failed");
+  } finally {
+    clearTimeout(timer);
+    token = undefined;
+  }
 }
