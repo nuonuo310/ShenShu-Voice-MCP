@@ -1,3 +1,5 @@
+> **施工恢复入口（每次开工必读）：[CURRENT-STATE](docs/CURRENT-STATE.md)。** 请先核对最新 GitHub HEAD 与 CI；不要仅凭旧聊天或本 README 早期 P0 内容判断进度。
+
 # 最新施工状态（2026-10-19）
 
 - **P1-MOCK 已部署并在 ChatGPT 中由用户确认听到声音**：现有 `/mcp` 注册的 `preview_shenshu_voice` 只返回固定英文样本，不调用 MiniMax。
