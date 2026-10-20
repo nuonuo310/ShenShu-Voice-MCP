@@ -11,6 +11,7 @@ import { z } from "zod";
 import { checkText } from "./src/contract.js";
 import { makeInlineToneFixture } from "./src/inline-fixture.js";
 import { handleProtectedResourceShell } from "./src/protected-resource-shell.js";
+import { createD1AdmissionDryRun } from "./src/d1-admission-dry-run.js";
 
 const MCP_PATH = "/mcp";
 const TONE_PATH = "/test-tone.wav";
@@ -244,5 +245,16 @@ export const httpServer = createHttpServer(async (req, res) => {
 if (process.env.NODE_ENV !== "test") {
   httpServer.listen(port, () => {
     console.log(`ShenShu Voice MCP P1-MOCK listening on http://localhost:${port}${MCP_PATH}`);
+    // Diagnostic emits booleans only: no credential values, OAuth subjects or network calls.
+    const env = process.env;
+    const dryRunEnabled = env.SHENSHU_D1_ADMISSION_DRY_RUN_ENABLED === "1";
+    const dryRunRegistered = typeof createD1AdmissionDryRun({env}) === "function";
+    console.log("shenshu_d1_registration " + JSON.stringify({
+      oauth_stage_enabled: env.SHENSHU_AUTH_MCP_ENABLED === "1",
+      dry_run_flag_enabled: dryRunEnabled,
+      d1_config_accepted: dryRunRegistered,
+      d1_tool_registered: env.SHENSHU_AUTH_MCP_ENABLED === "1" && dryRunRegistered,
+      paid_voice_enabled: false
+    }));
   });
 }
