@@ -6,9 +6,12 @@
   "scripts": {
     "test": "node --test",
     "dev": "node server.js",
-    "preview": "node src/local-server.js"
+    "preview": "node src/local-server.js",
+    "d1:preflight:readonly": "node src/d1-qualification-readonly-cli.js"
   },
-  "engines": {"node": ">=20"},
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.20.2",
