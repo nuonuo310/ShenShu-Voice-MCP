@@ -37,3 +37,17 @@ test("reject unsafe trust anchors on startup",()=>{
  assert.throws(()=>createVerifiedIdentityResolver({...setup,publicJwks:[{...pub,d:"private"}]}),/invalid_auth_configuration/);
  assert.throws(()=>createVerifiedIdentityResolver({...setup,publicJwks:[]}),/invalid_auth_configuration/);
 });
+
+test("paid voice authorization requires voice:speak scope even with valid JWT",async()=>{
+ const scoped=createVerifiedIdentityResolver({...setup,requiredScopes:["voice:speak"]});
+ await assert.rejects(scoped(req(token())),/insufficient_scope/);
+ await assert.rejects(scoped(req(token({scope:"profile email"}))),/insufficient_scope/);
+ const okay=await scoped(req(token({scope:"profile voice:speak"})));
+ assert.equal(okay.verified,true);
+ const scpOkay=await scoped(req(token({scp:["voice:speak"]})));
+ assert.equal(scpOkay.verified,true);
+});
+test("scope configuration refuses malformed or duplicate entitlements",()=>{
+ assert.throws(()=>createVerifiedIdentityResolver({...setup,requiredScopes:["voice:speak","voice:speak"]}),/invalid_auth_configuration/);
+ assert.throws(()=>createVerifiedIdentityResolver({...setup,requiredScopes:[""]}),/invalid_auth_configuration/);
+});
