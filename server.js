@@ -10,6 +10,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { z } from "zod";
 import { checkText } from "./src/contract.js";
 import { makeInlineToneFixture } from "./src/inline-fixture.js";
+import { handleProtectedResourceShell } from "./src/protected-resource-shell.js";
 
 const MCP_PATH = "/mcp";
 const TONE_PATH = "/test-tone.wav";
@@ -177,6 +178,9 @@ export const httpServer = createHttpServer(async (req, res) => {
     return;
   }
   const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+
+  // Staging auth resource: denies ALL paid calls, never creates an MCP session.
+  if (handleProtectedResourceShell(req, res, url.pathname)) return;
 
   if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
     res.writeHead(204, {
