@@ -49,6 +49,16 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next exclusive gate:** choose/verify an actual issuer and ChatGPT client-registration method, test issuer/audience and protected resource metadata on isolated authenticated staging route; then verify database quota and private audio before enabling paid tools.
 - Test status must be verified for the current SHA independently of this note.
 
+
+## P2F — Auth0 candidate + explicit voice permission (2026-10-20)
+
+- Latest provider research: official OpenAI authenticated MCP example uses Auth0 with OAuth auth-code/PKCE and DCR; see [OAUTH-PROVIDER-DECISION](OAUTH-PROVIDER-DECISION.md).
+- **Decision is conditional**: Auth0 is the first candidate, NOT an actually connected issuer; real issuer URL, token audience, client registration capability and access-token permission still require independent verification.
+- Added required OAuth scope validation in `src/verified-identity.js` with tests, so a correctly signed token without `voice:speak` is rejected. Actual privileged handler must explicitly set `requiredScopes:["voice:speak"]`.
+- Proposed separate future `/paid-mcp` resource; NOT implemented or deployed. Existing public `/mcp` MOCK remains unchanged.
+- Next ONLY: verify actual authorization-server onboarding and credentials securely, then develop a separate fail-closed protected endpoint. No real MiniMax TTS without all paid gates.
+- Validate CI status for this commit; doc alone does not prove pass.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
