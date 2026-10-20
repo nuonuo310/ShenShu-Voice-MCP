@@ -49,7 +49,7 @@ const heights=[9,17,26,14,22,33,18,12,29,36,19,13,23,31,16,10,22,35,25,13,19,30,
 const $=id=>document.getElementById(id);
 const wave=$("wave"),audio=$("audio"),play=$("play");
 wave.innerHTML=heights.map(h=>`<i style="--h:${h}px"></i>`).join("");
-let record=null,frame=0,rpcId=0;
+let record=null,frame=0,rpcId=0,loadPhase="idle";
 const pending=new Map();
 // Read-only, nonsecret runtime media capability report. Does not play audio or fetch URLs.
 function reportMediaCapability(){
@@ -86,8 +86,9 @@ function applyResponse(response){
   const next=response?.structuredContent?.record;
   if(!next)return;
   audio.pause();
+  loadPhase="reset";
   audio.removeAttribute("src");
-  audio.load();
+  // Do not call load() on an empty source; avoid confusing reset with media load failure.
   play.disabled=true;
   record=null;
   $("text").textContent=typeof next.text==="string"?next.text:"";
@@ -112,6 +113,7 @@ function applyResponse(response){
     }
     record=next;
     audio.src=target;
+    loadPhase=next.source==="private-fixture"?"private-inline":"other-source";
     audio.load();
     play.disabled=false;
   }catch{
@@ -150,8 +152,12 @@ play.addEventListener("click",async()=>{
 audio.addEventListener("play",()=>{cancelAnimationFrame(frame);paint()});
 audio.addEventListener("pause",()=>{cancelAnimationFrame(frame);paint()});
 audio.addEventListener("ended",()=>{cancelAnimationFrame(frame);paint()});
-audio.addEventListener("loadedmetadata",paint);
-audio.addEventListener("error",()=>{$("status").textContent="试听音频加载失败。"});
+audio.addEventListener("loadedmetadata",()=>{loadPhase="ready";paint()});
+audio.addEventListener("error",()=>{
+  if(loadPhase==="reset"||!audio.getAttribute("src"))return;
+  const code=Number.isInteger(audio.error?.code)?audio.error.code:0;
+  $("status").textContent="试听音频加载失败（阶段 "+loadPhase+"，媒体码 "+code+"）。";
+});
 paint();
 </script>
 </body>
