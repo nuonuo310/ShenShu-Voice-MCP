@@ -6,9 +6,8 @@
  */
 import {createVerifiedIdentityResolver} from "./verified-identity.js";
 import {createPaidAuthProbe} from "./paid-auth-probe.js";
-import {AUTH0_ISSUER,PAID_RESOURCE} from "./protected-resource-shell.js";
 
-export function createConfiguredPaidDiagnostic(env = {}) {
+export function createConfiguredPaidDiagnostic(env = {}, {issuer,audience} = {}) {
   if (env.SHENSHU_AUTH_DIAGNOSTIC_ENABLED !== "1") return null;
   let jwks;
   try {
@@ -20,8 +19,8 @@ export function createConfiguredPaidDiagnostic(env = {}) {
         jwks.keys.length > 10) return null;
     // Never take issuer/audience/scope from client input or JWT claims.
     const resolveVerifiedPrincipal=createVerifiedIdentityResolver({
-      issuer:AUTH0_ISSUER,
-      audience:PAID_RESOURCE,
+      issuer,
+      audience,
       publicJwks:jwks.keys,
       requiredScopes:["voice:speak"],
     });
