@@ -49,7 +49,7 @@ const heights=[9,17,26,14,22,33,18,12,29,36,19,13,23,31,16,10,22,35,25,13,19,30,
 const $=id=>document.getElementById(id);
 const wave=$("wave"),audio=$("audio"),play=$("play");
 wave.innerHTML=heights.map(h=>`<i style="--h:${h}px"></i>`).join("");
-let record=null,frame=0,rpcId=0,loadPhase="idle";
+let record=null,frame=0,rpcId=0,loadPhase="idle",mediaLoadGeneration=0;
 const pending=new Map();
 // Read-only, nonsecret runtime media capability report. Does not play audio or fetch URLs.
 function reportMediaCapability(){
@@ -86,6 +86,7 @@ function applyResponse(response){
   const next=response?.structuredContent?.record;
   if(!next)return;
   audio.pause();
+  mediaLoadGeneration++;
   loadPhase="reset";
   audio.removeAttribute("src");
   // Do not call load() on an empty source; avoid confusing reset with media load failure.
@@ -152,10 +153,17 @@ play.addEventListener("click",async()=>{
 audio.addEventListener("play",()=>{cancelAnimationFrame(frame);paint()});
 audio.addEventListener("pause",()=>{cancelAnimationFrame(frame);paint()});
 audio.addEventListener("ended",()=>{cancelAnimationFrame(frame);paint()});
-audio.addEventListener("loadedmetadata",()=>{loadPhase="ready";paint()});
+audio.addEventListener("loadedmetadata",()=>{
+  if(!record)return;
+  loadPhase="ready";
+  $("status").textContent=record.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":record.source==="private-fixture"?"授权测试音频（不调用 MiniMax）":record.source==="tone-fixture"?"离线提示音测试（非沈述声音）":"联调试听 · 固定英文样本（未调用 MiniMax）";
+  paint();
+});
 audio.addEventListener("error",()=>{
   if(loadPhase==="reset"||!audio.getAttribute("src"))return;
   const code=Number.isInteger(audio.error?.code)?audio.error.code:0;
+  // A late media error can be followed by a successful metadata event on iOS.
+  // Preserve the diagnostic until success is observed; never mask a persistent failure.
   $("status").textContent="试听音频加载失败（阶段 "+loadPhase+"，媒体码 "+code+"）。";
 });
 paint();
