@@ -44,6 +44,8 @@ body{margin:0;padding:10px;background:transparent}
   <p class="status" id="capability" aria-live="polite"></p>
   <button id="bridge-probe" type="button" hidden>检查 OAuth 通信桥</button>
   <p class="status" id="bridge-result" aria-live="polite"></p>
+  <button id="bridge-audio-probe" type="button" hidden>检查桥接 WAV 数据</button>
+  <p class="status" id="bridge-audio-result" aria-live="polite"></p>
 </div>
 <audio id="audio" preload="metadata" playsinline></audio>
 <script type="module">
@@ -156,6 +158,25 @@ bridgeProbe.addEventListener("click",async()=>{
     $("bridge-result").textContent=info?.bridge_verified===true&&info?.paid_voice_enabled===false&&info?.audio_returned===false?"OAuth 通信桥：成功（无音频、无计费）":"OAuth 通信桥：返回结果不符合预期";
   }catch{$("bridge-result").textContent="OAuth 通信桥：调用失败";}
   finally{bridgeProbe.disabled=false;}
+});
+const bridgeAudioProbe=$("bridge-audio-probe");
+if(isOAuthBubble)bridgeAudioProbe.hidden=false;
+bridgeAudioProbe.addEventListener("click",async()=>{
+  if(!isOAuthBubble)return;
+  bridgeAudioProbe.disabled=true;
+  $("bridge-audio-result").textContent="正在检查固定 WAV 数据…";
+  try{
+    const response=await request("tools/call",{name:"probe_oauth_bridge_audio_payload",arguments:{}});
+    const x=response?.structuredContent;
+    const base64=x?.audioBase64;
+    if(x?.source!=="oauth-bridge-tone"||x?.generated!==false||x?.paid_voice_enabled!==false||
+       x?.audioMimeType!=="audio/wav"||typeof base64!=="string"||base64.length>2800000||
+       !/^[A-Za-z0-9+/]+={0,2}$/.test(base64))throw Error("invalid_payload");
+    const bytes=atob(base64);
+    if(bytes.length<44||bytes.length>2097152||bytes.slice(0,4)!=="RIFF"||bytes.slice(8,12)!=="WAVE")throw Error("invalid_wav");
+    $("bridge-audio-result").textContent="OAuth 桥接 WAV 数据：已收到并通过格式检查（未播放）";
+  }catch{$("bridge-audio-result").textContent="OAuth 桥接 WAV 数据：检查失败";}
+  finally{bridgeAudioProbe.disabled=false;}
 });
 play.addEventListener("click",async()=>{
   try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.source==="private-fixture"?"授权测试音频（不调用 MiniMax）":record?.source==="tone-fixture"?"离线提示音测试（非沈述声音）":record?.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":"联调试听 · 固定英文样本（未调用 MiniMax）"}
