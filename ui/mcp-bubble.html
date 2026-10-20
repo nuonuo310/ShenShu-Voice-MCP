@@ -48,6 +48,8 @@ body{margin:0;padding:10px;background:transparent}
   <p class="status" id="bridge-audio-result" aria-live="polite"></p>
   <button id="bridge-decode-probe" type="button" hidden>检查桥接 WAV 解码</button>
   <p class="status" id="bridge-decode-result" aria-live="polite"></p>
+  <button id="bridge-play-probe" type="button" hidden>试听桥接 WAV（非计费）</button>
+  <p class="status" id="bridge-play-result" aria-live="polite"></p>
 </div>
 <audio id="audio" preload="metadata" playsinline></audio>
 <script type="module">
@@ -205,6 +207,41 @@ bridgeDecodeProbe.addEventListener("click",async()=>{
     const kind=typeof error?.name==="string"?error.name:"DecodeError";
     $("bridge-decode-result").textContent="OAuth 桥接 WAV：解码失败（"+kind+"）";
   }finally{if(context)try{await context.close()}catch{}bridgeDecodeProbe.disabled=false;}
+});
+const bridgePlayProbe=$("bridge-play-probe");
+if(isOAuthBubble)bridgePlayProbe.hidden=false;
+bridgePlayProbe.addEventListener("click",async()=>{
+  if(!isOAuthBubble)return;
+  bridgePlayProbe.disabled=true;
+  $("bridge-play-result").textContent="正在准备固定 WAV 试听…";
+  let context;
+  try{
+    const Context=window.AudioContext||window.webkitAudioContext;
+    if(typeof Context!=="function")throw Error("audio_context_unavailable");
+    // Create and resume within the direct click gesture, before awaiting host bridge.
+    context=new Context();
+    const unlocked=context.resume();
+    const response=await request("tools/call",{name:"probe_oauth_bridge_audio_payload",arguments:{}});
+    const x=response?.structuredContent;
+    if(x?.source!=="oauth-bridge-tone"||x?.generated!==false||x?.paid_voice_enabled!==false||x?.audioMimeType!=="audio/wav"||typeof x.audioBase64!=="string"||x.audioBase64.length>2800000||!/^[A-Za-z0-9+/]+={0,2}$/.test(x.audioBase64))throw Error("invalid_payload");
+    const raw=atob(x.audioBase64);
+    if(raw.length<44||raw.length>2097152||raw.slice(0,4)!=="RIFF"||raw.slice(8,12)!=="WAVE")throw Error("invalid_wav");
+    const bytes=new Uint8Array(raw.length);
+    for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+    await unlocked;
+    const decoded=await context.decodeAudioData(bytes.buffer);
+    if(!decoded||!Number.isFinite(decoded.duration)||decoded.duration<0.2||decoded.duration>60)throw Error("invalid_decoded_audio");
+    const node=context.createBufferSource();
+    node.buffer=decoded;
+    node.connect(context.destination);
+    node.onended=()=>{$("bridge-play-result").textContent="OAuth 桥接 WAV：试听结束（非计费）";void context.close();};
+    node.start();
+    $("bridge-play-result").textContent="OAuth 桥接 WAV：正在播放固定提示音";
+  }catch(error){
+    const kind=typeof error?.name==="string"?error.name:"PlaybackError";
+    $("bridge-play-result").textContent="OAuth 桥接 WAV：播放失败（"+kind+"）";
+    if(context)try{await context.close()}catch{}
+  }finally{bridgePlayProbe.disabled=false;}
 });
 play.addEventListener("click",async()=>{
   try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.source==="private-fixture"?"授权测试音频（不调用 MiniMax）":record?.source==="tone-fixture"?"离线提示音测试（非沈述声音）":record?.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":"联调试听 · 固定英文样本（未调用 MiniMax）"}
