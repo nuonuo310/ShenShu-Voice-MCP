@@ -18,11 +18,12 @@ function response(results) {
 test("dry-run uses isolated principal namespace and consumes one-use grant",async()=>{
  const calls=[];let step=0;
  const fetchImpl=async(url,opts)=>{
-   calls.push({url,body:JSON.parse(opts.body)});
+   const body=JSON.parse(opts.body);
+   calls.push({url,body});
    step++;
-   if(step===1)return response([{request_id:"dryreq_aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa",slot:1}]);
-   if(step===2)return response([{grant_id:"drygrant_bbbbbbbbbbbb4bbb8bbbbbbbbbbbbbbb"}]);
-   if(step===3)return response([{grant_id:"drygrant_bbbbbbbbbbbb4bbb8bbbbbbbbbbbbbbb"}]);
+   if(step===1)return response([{request_id:body.params[0],slot:1}]);
+   if(step===2)return response([{grant_id:body.params[0]}]);
+   if(step===3)return response([{grant_id:body.params[0]}]);
    return response([]);
  };
  const run=createD1AdmissionDryRun({
