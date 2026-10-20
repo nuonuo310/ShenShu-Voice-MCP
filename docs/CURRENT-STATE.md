@@ -85,6 +85,16 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next exclusive action:** verify the ChatGPT provided-client requirements and Auth0 dashboard's controlled client-registration settings; do not enable open DCR, do not expose credentials, do not open paid TTS.
 - Public MOCK `/mcp`, original Call and Voice Worker are unchanged.
 
+## P2J — Separate paid MCP route is fail-closed (2026-10-20)
+
+- Implemented `src/protected-resource-shell.js` and wired into `server.js` **before** the existing public `/mcp` route. Existing mock tools and audio fixture remain unchanged.
+- `GET /.well-known/oauth-protected-resource/paid-mcp` publishes resource metadata for `https://shenshu-voice-mcp.onrender.com/paid-mcp`, advertising configured Auth0 issuer `https://dev-nwr87q0tnrbjeapr.us.auth0.com/` and `voice:speak`. These are public discovery identifiers, not secrets.
+- **ALL** requests to `/paid-mcp` return 401 with RFC 9728 resource metadata challenge, even if they include an Authorization token. There is NO paid MCP tool, no login handler, no MiniMax call, no secret configuration.
+- CI at test commit `876690477076fe74059ea7a3d1d8dd96240104e6` PASSED, including local HTTP smoke checking discovery metadata and unauthorized/forged-token denial.
+- This proves the route is **closed** under tested scenarios; it does NOT prove Auth0 login works or that ChatGPT connects to this protected route. No production database, one-use grant or private audio is deployed.
+- No Auth0 callbacks were entered by the user. The existing SPA application's Allowed Callback URLs should remain unchanged until ChatGPT's real registered redirect is known.
+- **Next gate:** verify Render actually deployed this commit, then perform non-paid OAuth client registration / login compatibility tests against the separate protected route. Do NOT open `speak_shenshu` before real identity, durable quota, one-use grant and secure audio delivery are independently proven.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
