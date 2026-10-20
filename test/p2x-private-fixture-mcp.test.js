@@ -25,7 +25,7 @@ test("private fixture tool returns bounded inline nonbillable audio only when en
   assert.ok(names.includes("preview_private_fixture"));
   const tool=(await client.listTools()).tools.find(x=>x.name==="preview_private_fixture");
   const uri=tool._meta?.ui?.resourceUri;
-  assert.equal(uri,"ui://shenshu/private-fixture-bubble-v1.html");
+  assert.equal(uri,"ui://shenshu/private-fixture-bubble-v2.html");
   const resources=await client.listResources();
   assert.ok(resources.resources.some(x=>x.uri===uri));
   const view=await client.readResource({uri});
