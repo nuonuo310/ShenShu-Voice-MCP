@@ -310,6 +310,14 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No secrets, Cloudflare IDs, verified principal, request/grant identifiers, or SQL payloads are recorded in this checkpoint.
 
 
+## P2X — OAuth MCP Apps host bridge desktop PASS (2026-10-20)
+
+- User-confirmed **desktop ChatGPT web PASS**: existing OAuth test bubble rendered the `检查 OAuth 通信桥` button; one manual click returned `OAuth 通信桥：成功（无音频、无计费）`. This is a successful UI -> host `tools/call` -> OAuth tool -> UI result round trip with only nonsecret booleans.
+- Same earlier chat record initially failed to render the entire bubble in iPhone ChatGPT App, then rendered player and bridge button later without a new tool invocation. Network/transient rendering is possible but **not proven** as root cause.
+- **iPhone bridge invocation NOT YET VERIFIED**: rendering the button is not equivalent to clicking and receiving a response in native App. No private audio bytes returned via bridge, no private playback PASS.
+- PR #27 bridge probe merged `b89cebc` (CI #202 PASS). Do not repeat OAuth setup, player reconstruction, or existing desktop bridge test.
+- Next: single explicit manual bridge-button test on iPhone in the already-rendered chat, then assess protected audio payload transport and CSP without MiniMax or paid operations.
+
 ## P2X — OAuth HTTPS WAV iPhone PASS after narrow CSP allowlist (2026-10-20)
 
 - User-confirmed on ChatGPT native iPhone App after Render `45ce17a` Live: OAuth identity-test tool `preview_oauth_hosted_tone_control` called once, returned existing voice bubble; initial transient load-failure message appeared for a few seconds, then cleared to `HTTPS 固定提示音测试（不扣积分）`; tapping play produced audible WAV. **OAuth UI + public fixed HTTPS WAV: PASS (audible)**.
