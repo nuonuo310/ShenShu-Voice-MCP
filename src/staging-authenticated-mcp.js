@@ -97,6 +97,13 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     inputSchema:{type:"object",properties:{},additionalProperties:false},
     securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{resourceUri:PRIVATE_FIXTURE_UI_URI}}
   });
+  if(privateFixtureEnabled) tools.push({
+    name:"preview_oauth_hosted_tone_control",
+    title:"OAuth public HTTPS WAV diagnostic control",
+    description:"OAuth-gated tool displaying an already-public fixed synthetic WAV over HTTPS, using the SAME private UI resource. This audio is public test data, not private speech; no MiniMax or D1.",
+    inputSchema:{type:"object",properties:{},additionalProperties:false},
+    securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{resourceUri:PRIVATE_FIXTURE_UI_URI}}
+  });
   server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[{
     uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE
   }]:[]}));
@@ -124,6 +131,13 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
         content:[{type:"text",text:"D1 额度与一次性授权门禁已通过 dry-run；未调用 MiniMax。"}],
         structuredContent:result
       };
+    }
+    if(request.params.name==="preview_oauth_hosted_tone_control" && privateFixtureEnabled) {
+      return {content:[{type:"text",text:"OAuth 同资源 HTTPS 对照：公开固定提示音，不是私有音频或沈述语音。"}],
+        structuredContent:{record:{id:"oauth_hosted_tone_control_001",title:"OAuth HTTPS 对照",
+          text:"这是公开固定 HTTPS 测试音频，不是私有语音。",
+          audioUrl:"https://shenshu-voice-mcp.onrender.com/test-tone.wav",
+          durationSeconds:0.7,voiceLabel:"测试音频",generated:false,source:"hosted-tone"}}};
     }
     if(request.params.name==="preview_private_fixture" && privateFixtureEnabled) {
       const record=await preparePrivateFixtureAudio({
