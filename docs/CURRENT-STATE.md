@@ -66,6 +66,14 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next exclusive step:** obtain the Auth0 tenant Domain (nonsecret), independently verify its metadata, and identify which ChatGPT client registration mode our tenant supports. No client secret in chat; no paid route until all gates.
 - Public MOCK and Call remain untouched.
 
+## P2H — Auth0 tenant domain received; discovery diagnostic staged (2026-10-20)
+
+- User supplied Auth0 tenant domain `dev-nwr87q0tnrbjeapr.us.auth0.com` (public identifier; not a secret). The expected issuer is `https://dev-nwr87q0tnrbjeapr.us.auth0.com/`.
+- Attempts to fetch its OIDC metadata via available web/container routes failed from this environment. **Do not claim live tenant metadata verified**; do not infer DCR/CIMD support or token endpoint methods until actual response is captured.
+- Added `src/auth0-discovery-check.js` + isolated tests: operator-pinned Auth0 domain, one HTTPS OIDC discovery request, HTTPS issuer/endpoint/PKCE metadata validation. NO provider secrets, no live authorization or paid MiniMax requests, no change to public MCP server.
+- New diagnostic module is not wired to public route; CI must be checked at current HEAD before claiming PASS.
+- **Next exclusive step:** obtain and verify real tenant OIDC metadata response through an authorized accessible route (without secrets); select a supported ChatGPT client registration mode, then implement isolated fail-closed protected staging route. Never enable payment while identity, durable quota, single-use admission, and private audio delivery are missing.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
