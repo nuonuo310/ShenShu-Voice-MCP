@@ -110,7 +110,7 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
   server.setRequestHandler(ReadResourceRequestSchema,async request=>{
     if(!privateFixtureEnabled||request.params.uri!==PRIVATE_FIXTURE_UI_URI)throw Error("unknown_resource");
     return {contents:[{uri:PRIVATE_FIXTURE_UI_URI,mimeType:RESOURCE_MIME_TYPE,text:privateFixtureUi,
-      _meta:{ui:{prefersBorder:false,csp:{connectDomains:[],resourceDomains:[]}}}}]};
+      _meta:{ui:{prefersBorder:false,csp:{connectDomains:[],resourceDomains:["https://shenshu-voice-mcp.onrender.com"]}}}}]};
   });
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
   server.setRequestHandler(CallToolRequestSchema,async request=>{
