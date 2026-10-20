@@ -51,7 +51,7 @@ export async function handleProtectedResourceShell(req, res, pathname, {env = pr
       await handleStagingAuthenticatedMcp(req,res,{
         env,issuer:AUTH0_ISSUER,audience:PAID_RESOURCE,
         resourceMetadataUrl:RESOURCE_METADATA_URL,
-        jwksCache:runtimeJwksCache
+        jwksCache:env.SHENSHU_AUTH_PUBLIC_JWKS_JSON ? null : runtimeJwksCache
       });
       return true;
     }
