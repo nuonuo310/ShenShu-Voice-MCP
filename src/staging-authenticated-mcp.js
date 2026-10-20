@@ -20,6 +20,8 @@ import { makeInlineToneFixture } from "./inline-fixture.js";
 const MAX_JWKS_BYTES=65536;
 const PRIVATE_FIXTURE_UI_URI="ui://shenshu/private-fixture-bubble-v1.html";
 const privateFixtureUi=readFileSync(new URL("../ui/mcp-bubble.html",import.meta.url),"utf8");
+// Server-side exact resource specialization, not an iframe URL heuristic.
+const oauthBridgeUi=privateFixtureUi.replace('const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");','const isOAuthBubble=true;');
 
 export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=null}={}) {
   if(env?.SHENSHU_AUTH_MCP_ENABLED!=="1") return null;
@@ -117,7 +119,7 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
   }]:[]}));
   server.setRequestHandler(ReadResourceRequestSchema,async request=>{
     if(!privateFixtureEnabled||request.params.uri!==PRIVATE_FIXTURE_UI_URI)throw Error("unknown_resource");
-    return {contents:[{uri:PRIVATE_FIXTURE_UI_URI,mimeType:RESOURCE_MIME_TYPE,text:privateFixtureUi,
+    return {contents:[{uri:PRIVATE_FIXTURE_UI_URI,mimeType:RESOURCE_MIME_TYPE,text:oauthBridgeUi,
       _meta:{ui:{prefersBorder:false,csp:{connectDomains:[],resourceDomains:["https://shenshu-voice-mcp.onrender.com"]}}}}]};
   });
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
