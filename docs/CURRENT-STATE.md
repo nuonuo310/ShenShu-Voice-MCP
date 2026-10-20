@@ -148,6 +148,16 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next exclusive gate:** inspect the real public Auth0 JWKS (nonsecret) and then explicitly approve/enable the NON-BILLABLE Render OAuth staging flag for one ChatGPT login attempt. The only tool must remain `verify_shenshu_login` returning `paid_voice_enabled:false`. If JWKS validation or audience/scope issuance fails, STOP; do not weaken verification.
 - Public `/mcp`, Asteria-Call, original Voice Worker and Voice Gallery remain untouched.
 
+## P2P — real Auth0 public JWKS fixture validated (2026-10-20)
+
+- User fetched the tenant's official public JWKS document from `https://dev-nwr87q0tnrbjeapr.us.auth0.com/.well-known/jwks.json` and supplied it in chat. It contained two RSA signing keys with `use=sig`, `alg=RS256`, unique KIDs `e0gVxtW9x9tjNh7LNvLPE` and `R9HzjCHmHPE86pa72yazT`.
+- Added `test/auth0-real-jwks-fixture.test.js` containing only the public JWK components needed for compatibility checks (`kty/use/alg/kid/n/e`); no certificates, tokens, secrets or private key material stored.
+- Real-fixture compatibility test commit `341104148626293102c49949272e48c945335443` GitHub CI **SUCCESS**. Both public keys are accepted by Node's JWK parser and by our bounded JWKS cache validator.
+- This validates key SHAPE and current public trust material only. CI did not download the tenant itself and no real Auth0 access token has yet been issued to ChatGPT.
+- P2O dynamic JWKS path remains the only production-staging trust path. Do NOT configure static JWKS JSON on Render; do NOT set `SHENSHU_AUTH_STATIC_JWKS_TEST_ONLY` there.
+- **Next authorized gate:** enable ONLY the non-billable OAuth staging handshake on Render with `SHENSHU_AUTH_MCP_ENABLED=1`. Do not add MiniMax secrets or any paid tool. Then create a separate ChatGPT connector pointed at `/paid-mcp` using the saved provided-client OAuth settings and test one real login. Expected authenticated toolset: ONLY `verify_shenshu_login`, returning `paid_voice_enabled:false`.
+- If login fails due to audience/resource/scope/callback, STOP and diagnose; do not weaken validation. Existing public `/mcp`, Asteria-Call, Voice Worker and Voice Gallery remain untouched.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
