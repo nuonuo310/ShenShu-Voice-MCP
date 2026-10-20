@@ -310,6 +310,15 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No secrets, Cloudflare IDs, verified principal, request/grant identifiers, or SQL payloads are recorded in this checkpoint.
 
 
+## P2X — identical WAV mobile transport A/B result (2026-10-20)
+
+- **User-confirmed PASS:** `preview_hosted_tone` in ordinary `沈述声音MCP` produced an audible fixed 0.7-second WAV over `https://shenshu-voice-mcp.onrender.com/test-tone.wav` on iPhone in the ChatGPT native app. The user confirmed sound was heard; screenshot shows player with no load failure. This is a public, nonsecret synthetic tone only.
+- **Previously confirmed FAIL:** the OAuth `preview_private_fixture` in `沈述声音MCP-身份测试` produced a player but failed to load `data:audio/wav;base64` with `private-inline`, media error 4, and `NotSupportedError` on playback. Those observations were made in ChatGPT through Safari, not established as the same native-app runtime.
+- **Important confound:** successful HTTPS was tested in native ChatGPT App while prior private inline failures were on ChatGPT web/Safari. The fixture generator is the same, but both **transport and client runtime differ**. Do NOT claim this A/B conclusively isolates the data: URI as root cause. It is strong evidence HTTPS WAV can play in the native app.
+- PR #19 identical-fixture source regression CI #181 PASS, merged `c80ef50`.
+- **Next discriminating test:** compare private inline and public HTTPS WAV in the *same* ChatGPT native app runtime, using one nonbillable call each, with no repeated calls or paid tools. If private inline fails in native app too, transport restriction becomes more likely. If it succeeds, investigate Safari-specific media/CSP behavior. Keep OAuth/paid boundaries intact.
+- **Do not redo:** public mock bubble UI, Render/OAuth/D1 setup, existing HTTPS fixture, or previously successful nonbillable D1 admission. Do not expose generated/private voice publicly or activate MiniMax.
+
 ## P2X — operational checkpoint / no rework (2026-10-20)
 
 **Completed / verified:** Existing ChatGPT public mock player rendered and played an HTTPS fixture on iPhone per user confirmation (do not rebuild player). OAuth -> live D1 nonbillable admission PASS was reported once with `admission_verified:true,paid_voice_enabled:false,real_quota_consumed:false`. Render previously deployed OAuth private fixture tool with `SHENSHU_PRIVATE_FIXTURE_ENABLED=1`; user confirmed Live and tool invocation once, with player displayed. **Playback FAILED** on iPhone: `NotSupportedError`, media error `4`, readyState `0` for private inline WAV. Do NOT label mobile private audio delivery PASS.
