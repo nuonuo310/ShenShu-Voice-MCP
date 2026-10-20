@@ -172,6 +172,33 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No paid tool, MiniMax call, quota mutation or private audio path was introduced. Public MOCK `/mcp`, Asteria-Call, Voice Worker and Voice Gallery remain unchanged.
 - **Next exclusive gate:** wait for Render to deploy this commit, then reconnect the existing "沈述声音MCP-身份测试" once. Expected outcome: action discovery succeeds and the only discovered tool is `verify_shenshu_login`. If discovery still fails, inspect Auth0 token audience/scope or Render logs; do not weaken security or reconfigure Auth0 blindly.
 
+## P2R — real OAuth PASS + durable one-use admission candidate (2026-10-20)
+
+### Real OAuth result
+
+- ChatGPT UI reached a green connected state for `沈述声音MCP-身份测试`.
+- This conversation then exposed the connector tool `verify_shenshu_login`; the assistant invoked it successfully and received exactly:
+  - `authenticated: true`
+  - `paid_voice_enabled: false`
+- Therefore the real chain **Auth0 login -> ChatGPT OAuth -> action discovery -> protected MCP tools/call** is now verified PASS for the non-billable identity tool.
+- This does NOT authorize MiniMax. The only live authenticated tool remains non-billable.
+
+### Durable admission candidate
+
+- Added `db/002_paid_voice_grants.sql`, `src/postgres-grant-store.js`, `src/durable-paid-admission.js` and tests.
+- Candidate flow is strictly server-side:
+  1. cryptographically verified principal;
+  2. durable daily budget reservation;
+  3. server-generated grant issued in PostgreSQL;
+  4. the exact grant is consumed once, BEFORE any paid upstream attempt;
+  5. only then return an internal `allowed:true, oneTime:true` authorization object.
+- Grant IDs are never accepted from MCP tool arguments and never returned to the client. Replay consumes zero rows and fails closed.
+- Reservation/grant failures are conservative: no automatic refunds after a reservation because an uncertain future provider attempt could be billable. There is still no retry behavior.
+- Candidate/test commit `c076afbd53967132e6a0b3b2902b7da4d10f3acb` CI **SUCCESS**. This is offline fake-database coverage; no real PostgreSQL instance/migration/concurrency test has occurred.
+- No production paid tool imports this authorizer yet. MiniMax remains completely closed.
+- **Next exclusive gate:** provision an isolated PostgreSQL database for this MCP, run migrations 001 + 002, then perform real concurrent reservation/one-use grant tests. Do not add MiniMax secrets or `speak_shenshu` before the database gate passes.
+- Existing public MOCK `/mcp`, authenticated identity test connection, Asteria-Call, Voice Worker and Voice Gallery remain unchanged.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
