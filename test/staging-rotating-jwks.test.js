@@ -36,5 +36,5 @@ test("staging verifier fails closed when rotating key fetch fails",async()=>{
 test("static JWKS fallback is refused outside test env",()=>{
   const env={SHENSHU_AUTH_MCP_ENABLED:"1",SHENSHU_AUTH_PUBLIC_JWKS_JSON:JSON.stringify({keys:[jwk]})};
   assert.equal(createStagingIdentityVerifier(env,{issuer,audience}),null);
-  assert.equal(typeof createStagingIdentityVerifier({...env,NODE_ENV:"test"},{issuer,audience}),"function");
+  assert.equal(typeof createStagingIdentityVerifier({...env,SHENSHU_AUTH_STATIC_JWKS_TEST_ONLY:"1"},{issuer,audience}),"function");
 });
