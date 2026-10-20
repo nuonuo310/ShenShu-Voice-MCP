@@ -9,11 +9,11 @@ import {createCloudflareD1Http} from "./cloudflare-d1-http.js";
 import {createD1HttpPaidStore} from "./d1-http-paid-store.js";
 
 const IDENT=/^[A-Za-z0-9_-]{8,128}$/;
-export function createD1AdmissionDryRun({env=process.env,clock=()=>new Date(),idFactory=randomUUID}={}) {
+export function createD1AdmissionDryRun({env=process.env,clock=()=>new Date(),idFactory=randomUUID,fetchImpl=fetch}={}) {
   if(env?.SHENSHU_D1_ADMISSION_DRY_RUN_ENABLED!=="1") return null;
   let client,store;
   try {
-    client=createCloudflareD1Http({env});
+    client=createCloudflareD1Http({env,fetchImpl});
     store=createD1HttpPaidStore({client});
   } catch {return null;}
 
