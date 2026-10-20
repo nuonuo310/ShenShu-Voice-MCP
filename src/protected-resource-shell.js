@@ -7,6 +7,7 @@
  * any paid tools. Do not turn on real calls until separate security gates pass.
  */
 import {createProtectedResourceMetadata, unauthorizedChallenge} from "./oauth-resource-metadata.js";
+import {createConfiguredPaidDiagnostic, evaluatePaidDiagnostic} from "./configured-paid-diagnostic.js";
 
 export const PAID_PATH = "/paid-mcp";
 export const RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource/paid-mcp";
@@ -27,7 +28,7 @@ function reply(res, status, headers, body) {
 }
 
 /** Returns true only if a route was handled. No secrets or request body read. */
-export function handleProtectedResourceShell(req, res, pathname) {
+export async function handleProtectedResourceShell(req, res, pathname, {env = process.env} = {}) {
   if (pathname === RESOURCE_METADATA_PATH) {
     if (req.method !== "GET" && req.method !== "HEAD") {
       reply(res,405,{"Allow":"GET, HEAD","Cache-Control":"no-store"},"method_not_allowed");
@@ -41,13 +42,15 @@ export function handleProtectedResourceShell(req, res, pathname) {
     return true;
   }
   if (pathname === PAID_PATH) {
-    // Fail closed even for syntactically valid Authorization headers; no
-    // token verification or paid tools installed in this staging shell.
-    reply(res,challenge.status,{
+    // The login-diagnostic is optional and defaults OFF. Verified identity
+    // receives 403, not a paid grant. No paid tool or synthesis lives here.
+    const diagnostic=createConfiguredPaidDiagnostic(env,{issuer:AUTH0_ISSUER,audience:PAID_RESOURCE});
+    const outcome=await evaluatePaidDiagnostic(req,diagnostic);
+    reply(res,outcome.status,{
       ...challenge.headers,
       "Content-Type":"application/json; charset=utf-8",
       "X-Content-Type-Options":"nosniff",
-    },JSON.stringify({error:"unauthorized"}));
+    },JSON.stringify({error:outcome.code}));
     return true;
   }
   return false;
