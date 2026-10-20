@@ -104,6 +104,14 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     inputSchema:{type:"object",properties:{},additionalProperties:false},
     securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{resourceUri:PRIVATE_FIXTURE_UI_URI}}
   });
+  // Nonsecret bridge probe. App-only visibility: not offered as a model tool by compliant hosts.
+  if(privateFixtureEnabled) tools.push({
+    name:"probe_oauth_ui_bridge",
+    title:"Check OAuth MCP Apps host bridge",
+    description:"Nonbillable authenticated UI-to-host-to-server bridge probe; returns booleans only.",
+    inputSchema:{type:"object",properties:{},additionalProperties:false},
+    securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{visibility:["app"]}}
+  });
   server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[{
     uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE
   }]:[]}));
@@ -131,6 +139,10 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
         content:[{type:"text",text:"D1 额度与一次性授权门禁已通过 dry-run；未调用 MiniMax。"}],
         structuredContent:result
       };
+    }
+    if(request.params.name==="probe_oauth_ui_bridge" && privateFixtureEnabled) {
+      return {content:[{type:"text",text:"OAuth UI bridge probe OK; no audio or paid tools invoked."}],
+        structuredContent:{bridge_verified:true,paid_voice_enabled:false,audio_returned:false}};
     }
     if(request.params.name==="preview_oauth_hosted_tone_control" && privateFixtureEnabled) {
       return {content:[{type:"text",text:"OAuth 同资源 HTTPS 对照：公开固定提示音，不是私有音频或沈述语音。"}],
