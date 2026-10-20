@@ -298,6 +298,17 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next exclusive gate:** configure Render secrets `CF_D1_ACCOUNT_ID`, `CF_D1_DATABASE_ID`, `CF_D1_API_TOKEN` and `SHENSHU_D1_ADMISSION_DRY_RUN_ENABLED=1`, using a narrowly scoped Cloudflare token with D1 write access to the intended account. Then reconnect/refresh the existing OAuth test connector and call ONLY `verify_shenshu_d1_admission` once. Expected: `admission_verified:true`, `paid_voice_enabled:false`, `real_quota_consumed:false`.
 - Still no MiniMax key/tool, private audio delivery, or paid synthesis.
 
+
+## P2W — OAuth -> live Cloudflare D1 NON-BILLABLE admission: PASS (2026-10-20, user-reported MCP result)
+
+- Evidence provenance: user pasted the response from a freshly refreshed ChatGPT OAuth test connector after invoking `verify_shenshu_d1_admission` **once**. The assistant did not directly observe the tool invocation or inspect D1 rows. Reported structured result: `{"admission_verified":true,"paid_voice_enabled":false,"real_quota_consumed":false}`. No retry, MiniMax call, or paid voice tool invocation was reported.
+- Render auto-deployed commit `5dbb6b60b650bde2bdb3b2a43b5b57273ccde8dd` after diagnostic PR #2 merged. User-provided Render startup log displayed `oauth_stage_enabled:true`, `dry_run_flag_enabled:true`, `d1_config_accepted:true`, `d1_tool_registered:true`, `paid_voice_enabled:false`. This is a local configuration/registration diagnostic, not proof of successful D1 network access by itself.
+- OAuth connector tool discovery initially showed only `verify_shenshu_login`; after the user refreshed tools, a new chat reported `verify_shenshu_d1_admission` available and then the successful result above. Tool discovery cache is the observed operational issue; do not claim the protocol itself was defective.
+- **Decision:** accept P2W non-billable admission dry-run as PASS on the reported result. This supersedes earlier P2V/P2W notes claiming D1 credentials are absent or live dry-run remains unexecuted. Do not treat this as proof of a paid synthesis path or production release.
+- **Remaining gates:** independent review of authenticated paid-call boundaries, concurrency/replay and ambiguous failure handling, private short-lived audio delivery on ChatGPT/iPhone, and explicit user authorization before any billable MiniMax smoke test. Existing paid tool remains CLOSED; `paid_voice_enabled:false`.
+- **Next authorized work:** read-only contract/code audit and test planning only. Do not provision MiniMax credentials, enable `speak_shenshu`, alter quota limits, or rerun live D1 admission without separate approval.
+- No secrets, Cloudflare IDs, verified principal, request/grant identifiers, or SQL payloads are recorded in this checkpoint.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
