@@ -9,5 +9,5 @@ test("OAuth UI permits only existing fixed HTTPS tone origin while public UI ret
  assert.match(auth,/resourceDomains:\s*\["https:\/\/shenshu-voice-mcp\.onrender\.com"\]/);
  assert.match(pub,/connectDomains:\s*\[\]/);
  assert.match(auth,/connectDomains:\s*\[\]/);
- assert.match(auth,/PRIVATE_FIXTURE_UI_URI="ui:\/\/shenshu\/private-fixture-bubble-v1\.html"/);
+ assert.match(auth,/PRIVATE_FIXTURE_UI_URI="ui:\/\/shenshu\/private-fixture-bubble-v2\.html"/);
 });
