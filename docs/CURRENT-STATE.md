@@ -59,6 +59,13 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - Next ONLY: verify actual authorization-server onboarding and credentials securely, then develop a separate fail-closed protected endpoint. No real MiniMax TTS without all paid gates.
 - Validate CI status for this commit; doc alone does not prove pass.
 
+## P2G — Auth0 user onboarding and client registration policy (2026-10-20)
+
+- User reports Auth0 Free registration, API `ShenShu Voice MCP` with identifier `https://shenshu-voice-mcp.onrender.com/paid-mcp`, RS256, and a saved `voice:speak` permission. These are user-reported UI actions and not yet API-verified.
+- Updated `docs/OAUTH-PROVIDER-DECISION.md`: prefer controlled ChatGPT registration (provided client or CIMD if supported), rather than enabling Auth0 open DCR by default. Explicit client grants and verified audience/scopes are mandatory.
+- **Next exclusive step:** obtain the Auth0 tenant Domain (nonsecret), independently verify its metadata, and identify which ChatGPT client registration mode our tenant supports. No client secret in chat; no paid route until all gates.
+- Public MOCK and Call remain untouched.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
