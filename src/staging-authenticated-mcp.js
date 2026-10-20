@@ -115,6 +115,14 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     inputSchema:{type:"object",properties:{},additionalProperties:false},
     securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{visibility:["app"]}}
   });
+  // Fixed nonbillable WAV bytes through the authenticated host bridge; no public audio URL.
+  if(privateFixtureEnabled) tools.push({
+    name:"probe_oauth_bridge_audio_payload",
+    title:"Check OAuth bridge fixed audio payload",
+    description:"App-only nonbillable fixed synthetic WAV payload for transport diagnosis. No MiniMax or quota.",
+    inputSchema:{type:"object",properties:{},additionalProperties:false},
+    securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{visibility:["app"]}}
+  });
   server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[{
     uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE
   }]:[]}));
@@ -142,6 +150,13 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
         content:[{type:"text",text:"D1 额度与一次性授权门禁已通过 dry-run；未调用 MiniMax。"}],
         structuredContent:result
       };
+    }
+    if(request.params.name==="probe_oauth_bridge_audio_payload" && privateFixtureEnabled) {
+      const fixture=makeInlineToneFixture();
+      return {content:[{type:"text",text:"固定非计费 WAV 数据经 OAuth MCP 桥返回，未播放。"}],
+        structuredContent:{source:"oauth-bridge-tone",generated:false,
+          audioMimeType:fixture.audioMimeType,audioBase64:fixture.audioBase64,
+          durationSeconds:fixture.durationSeconds,paid_voice_enabled:false}};
     }
     if(request.params.name==="probe_oauth_ui_bridge" && privateFixtureEnabled) {
       return {content:[{type:"text",text:"OAuth UI bridge probe OK; no audio or paid tools invoked."}],
