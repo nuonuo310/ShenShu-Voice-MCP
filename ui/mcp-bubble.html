@@ -41,6 +41,7 @@ body{margin:0;padding:10px;background:transparent}
   </div>
   <p class="text" id="text"></p>
   <p class="status" id="status">等待 MCP 工具结果…</p>
+  <p class="status" id="capability" aria-live="polite"></p>
 </div>
 <audio id="audio" preload="metadata" playsinline></audio>
 <script type="module">
@@ -50,6 +51,15 @@ const wave=$("wave"),audio=$("audio"),play=$("play");
 wave.innerHTML=heights.map(h=>`<i style="--h:${h}px"></i>`).join("");
 let record=null,frame=0,rpcId=0;
 const pending=new Map();
+// Read-only, nonsecret runtime media capability report. Does not play audio or fetch URLs.
+function reportMediaCapability(){
+  try{
+    const capability=audio.canPlayType("audio/wav")||"none";
+    const blobAvailable=typeof URL.createObjectURL==="function"&&typeof Blob==="function";
+    $("capability").textContent="音频能力：WAV "+capability+" · Blob "+(blobAvailable?"可创建":"不可创建")+"（未测试播放）";
+  }catch{$("capability").textContent="音频能力：检测不可用";}
+}
+reportMediaCapability();
 
 const fmt=s=>Number.isFinite(s)?`${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,"0")}`:"0:00";
 function paint(){
