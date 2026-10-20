@@ -274,6 +274,18 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No MiniMax API call, no paid tool, no real quota consumption, and no Call/Voice-Worker change occurred in this slice.
 - NEXT ONLY: fix and green the dry-run test; then record exact Render environment setup and perform one authenticated, NON-BILLABLE D1 dry-run from ChatGPT. If that passes, move to private audio delivery. Do not open `speak_shenshu` yet.
 
+## P2V/W — Render-to-Cloudflare D1 dry-run wiring candidate (2026-10-20)
+
+- Added Cloudflare D1 REST client for the Render-hosted MCP using the official `POST /accounts/{account_id}/d1/database/{database_id}/query` API.
+- Added `src/d1-http-paid-store.js` adapter so the existing canonical D1 SQL can be used over REST; no SQL is built from user text, only parameter arrays vary.
+- Added opt-in `verify_shenshu_d1_admission` authenticated MCP tool. It is exposed only when `SHENSHU_D1_ADMISSION_DRY_RUN_ENABLED=1` and valid Cloudflare D1 environment values are present.
+- The dry-run uses a separate `dryrun_<verifiedSubject>` namespace and limit 20, so it does not consume the authenticated user's real paid-voice quota. It still performs live D1 reserve -> grant issue -> one-time consume and returns only:
+  `admission_verified:true`, `paid_voice_enabled:false`, `real_quota_consumed:false`.
+- Cloudflare account ID, database ID, and API token are environment-only and never appear in MCP tool arguments/results or GitHub.
+- Initial dry-run tests failed only because deterministic fixture IDs did not match the generated IDs. Fixture alignment commit `21f354198de1b6934c7fe680eeafe1c777e158f4` CI **SUCCESS**.
+- No MiniMax call, no paid tool, no real quota mutation, and no Call/Voice-Worker changes occurred.
+- **Next exclusive gate:** provision three Render secrets/variables for the existing D1 database and enable the dry-run flag, redeploy, then invoke `verify_shenshu_d1_admission` once through the already-connected OAuth MCP. If it returns the three expected booleans, OAuth->D1 runtime admission is PASS. Do not add MiniMax secrets yet.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
