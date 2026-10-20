@@ -105,6 +105,18 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next exclusive gate:** obtain the exact OAuth redirect from the ChatGPT MCP management flow, confirm provided-client registration works with the SPA's actual Auth0 client ID and resource/audience parameter, then connect an isolated staging auth verifier with trusted JWKS. Do NOT accept a real paid request until durable budget, single-use server grant, private audio delivery and explicit user approval are all proven.
 - The existing no-auth `/mcp` and fail-closed `/paid-mcp` endpoints, Asteria-Call, Voice-Worker and voice gallery remain untouched.
 
+## P2L — optional Auth0 signed-token check on protected route (2026-10-20)
+
+- Code now wires `createConfiguredPaidDiagnostic` to the existing `/paid-mcp` through an asynchronous protected shell. New files `src/configured-paid-diagnostic.js` and `test/configured-paid-diagnostic.test.js`.
+- **Default behavior unchanged:** `SHENSHU_AUTH_DIAGNOSTIC_ENABLED` absent/other than `1` means ALL paid-path requests still return 401; no trusted JWKS configured => still 401.
+- The optional check requires `SHENSHU_AUTH_DIAGNOSTIC_ENABLED=1` and operator-provided `SHENSHU_AUTH_PUBLIC_JWKS_JSON` (public JWK document only), plus fixed Auth0 issuer `https://dev-nwr87q0tnrbjeapr.us.auth0.com/`, resource audience `https://shenshu-voice-mcp.onrender.com/paid-mcp` and scope `voice:speak`. Do not source any of these values from caller arguments or headers.
+- When diagnostics are configured, valid signed access-token + proper scope returns **403 paid_voice_disabled**, NOT a grant. Missing/invalid token => 401; missing scope => 403 insufficient_scope. No token or principal is reflected.
+- `/paid-mcp` is still NOT an MCP Streamable HTTP endpoint for authenticated sessions. No OAuth login flow, client registration, trust-key rotation, database admission, MiniMax invocation or private audio delivery is available.
+- CI at implementation/test commit `f43af679b5d2d1e5c47a8a703ecf6949b422ea09`: SUCCESS. Fake RSA keys used in tests only; no actual Auth0 token was received.
+- **Do NOT enable diagnostics on production Render yet.** First verify the actual Auth0 JWKS trust chain and approved ChatGPT provided-client configuration, exact callback URL and audience token flow. A static public-JWKS snapshot lacks automatic rotation; design safe refresh and key failure before production real login.
+- Original `/mcp` mock, Call, Voice Worker, voice gallery and billable TTS remain untouched.
+- Next step: collect the exact ChatGPT OAuth redirect from the new connector setup and Auth0 app's nonsecret Client ID through user-controlled UI; verify controlled registration and audience without asking for Client Secret, access token, or credentials.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
