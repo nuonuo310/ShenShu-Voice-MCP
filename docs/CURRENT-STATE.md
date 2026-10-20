@@ -74,6 +74,17 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - New diagnostic module is not wired to public route; CI must be checked at current HEAD before claiming PASS.
 - **Next exclusive step:** obtain and verify real tenant OIDC metadata response through an authorized accessible route (without secrets); select a supported ChatGPT client registration mode, then implement isolated fail-closed protected staging route. Never enable payment while identity, durable quota, single-use admission, and private audio delivery are missing.
 
+## P2I — user-provided real Auth0 OIDC discovery assessed (2026-10-20)
+
+- User successfully fetched the public `/.well-known/openid-configuration` document from `dev-nwr87q0tnrbjeapr.us.auth0.com` and pasted it into chat. The data is **user-supplied, not independently downloaded by this runtime**.
+- Verified from supplied values: issuer `https://dev-nwr87q0tnrbjeapr.us.auth0.com/`, HTTPS authorization/token/JWKS paths, authorization-code grant, PKCE S256, token endpoint auth methods including `none`, `client_secret_post`, `client_secret_basic`, `private_key_jwt`, and authorization response issuer signal.
+- The document DOES NOT advertise `registration_endpoint` or `client_id_metadata_document_supported`. **Do not presume DCR or CIMD registration works.** The preferred next feasibility study is ChatGPT `provided` client registration with a separately registered, controlled third-party OAuth application. Verify callback URI, Auth0 client grant, third-party access policy and API audience before making changes.
+- `voice:speak` is not in the OIDC discovery `scopes_supported` list; this alone does NOT invalidate the API-specific permission the user created. It needs a real audience-bound access-token proof.
+- Added `test/auth0-user-discovery-fixture.test.js` with public (non-secret) representative values and explicit negative registration assertions. This is validation only, NOT login or client setup.
+- Auth0's Resource Parameter Compatibility Profile may be needed for MCP `resource` to map to the API audience; verify actual issued `aud` before enabling protected functionality.
+- **Next exclusive action:** verify the ChatGPT provided-client requirements and Auth0 dashboard's controlled client-registration settings; do not enable open DCR, do not expose credentials, do not open paid TTS.
+- Public MOCK `/mcp`, original Call and Voice Worker are unchanged.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
