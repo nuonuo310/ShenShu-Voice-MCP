@@ -31,7 +31,7 @@ async function post(method,id,auth) {
 }
 test("P2M protected MCP: RSA identity, scope and audience gates; no paid tool",async()=>{
   const child=spawn(process.execPath,["server.js"],{
-    env:{...process.env,NODE_ENV:"test",PORT:String(port),SHENSHU_AUTH_MCP_ENABLED:"1",
+    env:{...process.env,PORT:String(port),SHENSHU_AUTH_MCP_ENABLED:"1",SHENSHU_AUTH_STATIC_JWKS_TEST_ONLY:"1",
       SHENSHU_AUTH_PUBLIC_JWKS_JSON:JSON.stringify({keys:[key]})},
     stdio:["ignore","pipe","pipe"]
   });
