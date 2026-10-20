@@ -14,3 +14,18 @@ test("server-owned grant sequence precedes exactly one fake synthesis",async()=>
 test("every admission denial blocks synthesis",async()=>{for(const fail of ["reserve","issue","consume"]){const h=setup(fail);let synth=0;await assert.rejects(createLiveVoice({text:"测试",requestId:"request_valid_001",authorize:h.authorize,synthesize:async()=>{synth++;return {audio,durationSeconds:0.7}}}));assert.equal(synth,0)}});
 test("request replay rejected before synthesis",async()=>{const h=setup();let synth=0;const args={text:"测试",requestId:"request_valid_001",authorize:h.authorize,synthesize:async()=>{synth++;return {audio,durationSeconds:0.7}}};await createLiveVoice(args);await assert.rejects(createLiveVoice(args));assert.equal(synth,1)});
 test("invalid identity, action and request ID fail closed",async()=>{assert.throws(()=>createServerOwnedVoiceAdmission({verifiedSubject:"bad"}),/admission_unavailable/);const h=setup();await assert.rejects(h.authorize({action:"other",textBytes:2,requestId:"request_valid_001"}),/not_authorized/);assert.deepEqual(h.calls,[])});
+
+test("thrown D1 operations block synthesis and preserve ordering",async()=>{
+ for(const fail of ["reserve","issue","consume"]){
+  const calls=[];let synth=0;
+  const store={
+   async reserveAtomic(){calls.push("reserve");if(fail==="reserve")throw Error("d1_unavailable");return {reserved:true}},
+   async issue(){calls.push("issue");if(fail==="issue")throw Error("d1_unavailable");return {issued:true}},
+   async consume(){calls.push("consume");if(fail==="consume")throw Error("d1_unavailable");return {consumed:true}}
+  };
+  const authorize=createServerOwnedVoiceAdmission({verifiedSubject:"verified_subject_001",store,makeGrantId:()=>"grant_fixed_001"});
+  await assert.rejects(createLiveVoice({text:"测试",requestId:"request_valid_001",authorize,synthesize:async()=>{synth++;return {audio,durationSeconds:0.7}}}),/d1_unavailable/);
+  assert.equal(synth,0);
+  assert.deepEqual(calls,fail==="reserve"?["reserve"]:fail==="issue"?["reserve","issue"]:["reserve","issue","consume"]);
+ }
+});
