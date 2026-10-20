@@ -310,6 +310,13 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No secrets, Cloudflare IDs, verified principal, request/grant identifiers, or SQL payloads are recorded in this checkpoint.
 
 
+## P2X — iPhone OAuth bridge WAV payload inspection PASS (2026-10-20)
+
+- User opened an existing native ChatGPT iPhone chat after Render `fecc47e` Live; the existing OAuth bubble exposed the newly deployed `检查桥接 WAV 数据` button **without another model tool call**. This is observed UI resource refresh behavior; the exact cache mechanism is unknown.
+- User clicked the new button once and observed exactly `OAuth 桥接 WAV 数据：已收到并通过格式检查（未播放）`. **PASS** for OAuth host-bridge tool invocation and bounded synthetic WAV payload transfer into UI with basic RIFF/WAVE and size checks. The payload was **not played**.
+- PR #30 CI #210 PASS, merged `fecc47e`; fixed synthetic nonbillable WAV only, no MiniMax/D1 writes and no private generated voice.
+- Next exclusive gate: isolate safe iPhone media decoding/playback of the already-received bytes (prior `data:` source failed), without publishing private audio or relaxing OAuth boundaries. Do not mark private audio playback PASS from this data-transfer check.
+
 ## P2X — OAuth MCP Apps iPhone host bridge PASS (2026-10-20)
 
 - User confirmed **native iPhone ChatGPT App**: tapped the OAuth UI `检查 OAuth 通信桥` button in the already-rendered chat and observed success; the same OAuth player also produced audible public HTTPS WAV tone. **iPhone bridge round trip PASS; public HTTPS WAV playback PASS.** No additional tool retry was requested.
