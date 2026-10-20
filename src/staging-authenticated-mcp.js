@@ -7,8 +7,10 @@
  * no unsigned principal from tools or headers (other than bearer token) is used.
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { readFileSync } from "node:fs";
+import { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { ListToolsRequestSchema, CallToolRequestSchema, ListResourcesRequestSchema, ReadResourceRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createVerifiedIdentityResolver } from "./verified-identity.js";
 import { createAuth0JwksCache } from "./auth0-jwks-cache.js";
 import { createD1AdmissionDryRun } from "./d1-admission-dry-run.js";
@@ -16,6 +18,8 @@ import { preparePrivateFixtureAudio } from "./private-fixture-delivery.js";
 import { makeInlineToneFixture } from "./inline-fixture.js";
 
 const MAX_JWKS_BYTES=65536;
+const PRIVATE_FIXTURE_UI_URI="ui://shenshu/private-fixture-bubble-v1.html";
+const privateFixtureUi=readFileSync(new URL("../ui/mcp-bubble.html",import.meta.url),"utf8");
 
 export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=null}={}) {
   if(env?.SHENSHU_AUTH_MCP_ENABLED!=="1") return null;
@@ -46,7 +50,7 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
   if(typeof verifiedSubject!=="string" || verifiedSubject.length<8) throw Error("missing_verified_subject");
   const server=new Server(
     {name:"shenshu-identity-stage",version:"0.2.0"},
-    {capabilities:{tools:{}}}
+    {capabilities:{tools:{},resources:{}}}
   );
   const oauth=[{type:"oauth2",scopes:["voice:speak"]}];
   const tools=[{
@@ -91,7 +95,15 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     title:"Preview authenticated non-billable audio fixture",
     description:"Returns a fixed short synthetic tone only after OAuth authentication. No MiniMax, no paid quota, no public audio URL.",
     inputSchema:{type:"object",properties:{},additionalProperties:false},
-    securitySchemes:oauth,_meta:{securitySchemes:oauth}
+    securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{resourceUri:PRIVATE_FIXTURE_UI_URI}}
+  });
+  server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[{
+    uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE
+  }]:[]}));
+  server.setRequestHandler(ReadResourceRequestSchema,async request=>{
+    if(!privateFixtureEnabled||request.params.uri!==PRIVATE_FIXTURE_UI_URI)throw Error("unknown_resource");
+    return {contents:[{uri:PRIVATE_FIXTURE_UI_URI,mimeType:RESOURCE_MIME_TYPE,text:privateFixtureUi,
+      _meta:{ui:{prefersBorder:false,csp:{connectDomains:[],resourceDomains:[]}}}}]};
   });
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
   server.setRequestHandler(CallToolRequestSchema,async request=>{
