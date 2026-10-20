@@ -23,7 +23,7 @@ export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=nul
       return async function resolveWithRotatingKeys(request) {
         const snapshot=await jwksCache.get();
         const verifier=createVerifiedIdentityResolver({
-          issuer,audience,publicJwks:snapshot.keys,requiredScopes:["voice:speak"]
+          issuer,audience,publicJwks:snapshot.keys,requiredScopes:["voice:speak"],maxLifetimeSeconds:86400
         });
         return verifier(request);
       };
@@ -34,21 +34,26 @@ export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=nul
     const data=JSON.parse(json);
     if(!Array.isArray(data?.keys)||data.keys.length<1||data.keys.length>10) return null;
     return createVerifiedIdentityResolver({
-      issuer,audience,publicJwks:data.keys,requiredScopes:["voice:speak"]
+      issuer,audience,publicJwks:data.keys,requiredScopes:["voice:speak"],maxLifetimeSeconds:86400
     });
   } catch {return null;}
 }
 
 export function makeStagingMcpServer() {
   const server=new McpServer({name:"shenshu-identity-stage",version:"0.1.0"});
-  server.tool("verify_shenshu_login",
-    "Non-billable OAuth login handshake. Confirms authenticated access only. Generates no voice.",
-    {},
-    async()=>({
-      content:[{type:"text",text:"身份已验证。沈述付费语音尚未开放。"}],
-      structuredContent:{authenticated:true,paid_voice_enabled:false}
-    })
-  );
+  server.registerTool("verify_shenshu_login",{
+    title:"Verify ShenShu OAuth login",
+    description:"Non-billable OAuth login handshake. Confirms authenticated access only. Generates no voice.",
+    inputSchema:{},
+    outputSchema:{
+      authenticated:z.boolean(),
+      paid_voice_enabled:z.boolean()
+    },
+    securitySchemes:[{type:"oauth2",scopes:["voice:speak"]}]
+  },async()=>({
+    content:[{type:"text",text:"身份已验证。沈述付费语音尚未开放。"}],
+    structuredContent:{authenticated:true,paid_voice_enabled:false}
+  }));
   return server;
 }
 
