@@ -51,3 +51,15 @@ test("scope configuration refuses malformed or duplicate entitlements",()=>{
  assert.throws(()=>createVerifiedIdentityResolver({...setup,requiredScopes:["voice:speak","voice:speak"]}),/invalid_auth_configuration/);
  assert.throws(()=>createVerifiedIdentityResolver({...setup,requiredScopes:[""]}),/invalid_auth_configuration/);
 });
+
+test("accept exact resource inside standards-compliant aud array but reject arrays without it",async()=>{
+ const arrayResolver=createVerifiedIdentityResolver({...setup,maxLifetimeSeconds:86400});
+ const good=await arrayResolver(req(token({aud:[setup.audience,"https://issuer.example.invalid/userinfo"],exp:now+7200})));
+ assert.equal(good.verified,true);
+ await assert.rejects(arrayResolver(req(token({aud:["https://other.example"],exp:now+7200}))),/not_authorized/);
+});
+test("Auth0-compatible 24h ceiling accepts long-lived valid token but still rejects beyond ceiling",async()=>{
+ const long=createVerifiedIdentityResolver({...setup,maxLifetimeSeconds:86400});
+ assert.equal((await long(req(token({exp:now+86300})))).verified,true);
+ await assert.rejects(long(req(token({exp:now+90000}))),/not_authorized/);
+});
