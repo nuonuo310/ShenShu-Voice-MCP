@@ -138,6 +138,16 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next exclusive gate:** independently read and validate real tenant public JWKS from a trusted route; verify real access-token issuance with audience and scope through the already-provisioned Auth0 SPA client, keeping all tools non-billable. Do not enable Render auth flags until explicitly authorized.
 - Call, Voice Worker, Voice Gallery, original MOCK MCP and paid MiniMax remain untouched.
 
+## P2O — rotating JWKS wired into staged OAuth verifier (2026-10-20)
+
+- P2N JWKS cache is now supported by `src/staging-authenticated-mcp.js`; the protected staging route constructs one pinned Auth0 cache and, when authentication staging is explicitly enabled, verifies each request against currently cached/rotated keys.
+- Production staging no longer accepts a static JWKS environment snapshot. Static `SHENSHU_AUTH_PUBLIC_JWKS_JSON` is usable only when the dedicated `SHENSHU_AUTH_STATIC_JWKS_TEST_ONLY=1` flag is set; HTTP tests use that flag. Do NOT set it on Render.
+- Dynamic path uses only the repository-pinned `https://dev-nwr87q0tnrbjeapr.us.auth0.com/.well-known/jwks.json`; endpoint cannot be selected by user/token. Cache refresh failure after expiry fails closed.
+- Added `test/staging-rotating-jwks.test.js` and updated authenticated HTTP test. A temporary CI failure was caused by using `NODE_ENV=test` (which intentionally prevents `server.js` from listening); replaced with dedicated test-only flag. Latest fix/test commit `e48298edceb71b6509f35c8feb0f393315199ffe` CI **SUCCESS**.
+- No real Auth0 JWKS was downloaded by CI, no real access token was issued, and Render auth staging remains disabled unless explicitly configured. There is still no paid MCP tool, quota mutation, private audio delivery or MiniMax call.
+- **Next exclusive gate:** inspect the real public Auth0 JWKS (nonsecret) and then explicitly approve/enable the NON-BILLABLE Render OAuth staging flag for one ChatGPT login attempt. The only tool must remain `verify_shenshu_login` returning `paid_voice_enabled:false`. If JWKS validation or audience/scope issuance fails, STOP; do not weaken verification.
+- Public `/mcp`, Asteria-Call, original Voice Worker and Voice Gallery remain untouched.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
