@@ -199,6 +199,23 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next exclusive gate:** provision an isolated PostgreSQL database for this MCP, run migrations 001 + 002, then perform real concurrent reservation/one-use grant tests. Do not add MiniMax secrets or `speak_shenshu` before the database gate passes.
 - Existing public MOCK `/mcp`, authenticated identity test connection, Asteria-Call, Voice Worker and Voice Gallery remain unchanged.
 
+## P2S — recovered Cloudflare D1 becomes canonical paid-admission path (2026-10-20)
+
+- User verified the existing Cloudflare D1 database `shenshu-voice-budget-test` is live and non-empty: dashboard showed 17 queries, 106 rows read, 29 rows written and 1 application table.
+- Live D1 schema recovered from `sqlite_master`:
+  `paid_voice_reservations(request_id PRIMARY KEY, principal, day_utc, slot CHECK 1..20, created_at, UNIQUE(principal, day_utc, slot))`.
+- Live rows prove real prior testing:
+  - `test_owner` occupied slots 1 and 2 for day `2026-10-20`;
+  - probe principal `probe_16444859c922438a927488438f83c7ee` occupied slots 1,2,3 for day `2026-10-19`.
+- Therefore PostgreSQL is **not** the canonical production direction. Existing PostgreSQL files remain historical/candidate evidence only and must not be deployed unless explicitly re-authorized.
+- Added `db/d1/001_paid_voice_reservations.sql` matching the recovered live schema, `db/d1/002_paid_voice_grants.sql`, `src/d1-paid-store.js` and tests.
+- D1 reservation uses one atomic SQLite `INSERT OR IGNORE ... SELECT first-free-slot ... RETURNING` statement. Existing primary key prevents request replay; existing unique `principal/day/slot` constraint protects concurrent slot collisions. Limit remains server-supplied and max 20.
+- One-use grant candidate uses D1 `paid_voice_grants`; consume is `UPDATE ... WHERE state='issued' RETURNING`, so replay returns no row and fails closed.
+- D1 implementation/test commit `142889851719f885baf79ddc68a383b40289c0c3` CI **SUCCESS**.
+- Cloudflare documentation confirms D1 batch statements are transactional and roll back the sequence on statement failure; our reservation path currently needs only one atomic statement. See https://developers.cloudflare.com/d1/worker-api/d1-database/
+- **Next exclusive gate:** do NOT create a new database. Apply only migration 002 to the EXISTING D1 `shenshu-voice-budget-test` after explicit review/approval, then run real D1 concurrency/replay tests against the existing reservation table plus new grant table. No MiniMax call yet.
+- Existing Auth0 OAuth PASS, public MOCK `/mcp`, Asteria-Call, Voice Worker and Voice Gallery remain unchanged.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
