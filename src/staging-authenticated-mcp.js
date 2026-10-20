@@ -10,12 +10,24 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 import { createVerifiedIdentityResolver } from "./verified-identity.js";
+import { createAuth0JwksCache } from "./auth0-jwks-cache.js";
 
 const MAX_JWKS_BYTES=65536;
 
-export function createStagingIdentityVerifier(env,{issuer,audience}) {
+export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=null}={}) {
   if(env?.SHENSHU_AUTH_MCP_ENABLED!=="1") return null;
   try {
+    // Production staging prefers live trusted JWKS retrieval; static JSON exists
+    // only as an explicit test/dev fallback and is never caller supplied.
+    if (jwksCache && typeof jwksCache.get==="function") {
+      return async function resolveWithRotatingKeys(request) {
+        const snapshot=await jwksCache.get();
+        const verifier=createVerifiedIdentityResolver({
+          issuer,audience,publicJwks:snapshot.keys,requiredScopes:["voice:speak"]
+        });
+        return verifier(request);
+      };
+    }
     const json=env?.SHENSHU_AUTH_PUBLIC_JWKS_JSON;
     if(typeof json!=="string" || Buffer.byteLength(json,"utf8")>MAX_JWKS_BYTES) return null;
     const data=JSON.parse(json);
@@ -44,7 +56,7 @@ export function makeStagingMcpServer() {
  * Returns no identity data to the client. Errors are generic and fail closed.
  */
 export async function handleStagingAuthenticatedMcp(req,res,{
-  env,issuer,audience,resourceMetadataUrl
+  env,issuer,audience,resourceMetadataUrl,jwksCache=null
 }) {
   const challenge='Bearer resource_metadata="'+resourceMetadataUrl+'", scope="voice:speak"';
   const refuse=(status,reason, extra={})=>{
@@ -56,7 +68,7 @@ export async function handleStagingAuthenticatedMcp(req,res,{
     });
     res.end(JSON.stringify({error:reason}));
   };
-  const verifier=createStagingIdentityVerifier(env,{issuer,audience});
+  const verifier=createStagingIdentityVerifier(env,{issuer,audience,jwksCache});
   if(!verifier) {
     refuse(401,"unauthorized",{"WWW-Authenticate":challenge});
     return;
