@@ -310,6 +310,14 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No secrets, Cloudflare IDs, verified principal, request/grant identifiers, or SQL payloads are recorded in this checkpoint.
 
 
+## P2X — SAME-RUNTIME native ChatGPT iPhone comparison (2026-10-20, user confirmed)
+
+- **Public HTTPS WAV PASS:** In native ChatGPT iPhone App, ordinary `沈述声音MCP` tool `preview_hosted_tone` produced an audible 0.7-second fixed synthetic WAV from `/test-tone.wav` (one call, user confirmed).
+- **OAuth private inline WAV FAIL:** In the **same native ChatGPT iPhone App**, identity-test connector `preview_private_fixture` was called once with zero retries. The bubble rendered but immediately displayed `试听音频加载失败（阶段 private-inline，媒体码 4）` before pressing play. This confirms earlier Safari failure also reproduces in native app. Do not attribute failure merely to Safari-versus-App differences.
+- Both tools source the same WAV generator (`makeInlineToneFixture`) and share the existing bubble. Transport/source and authenticated MCP resource contexts still differ, so this narrows suspicion to inline data-URI or sandbox policy but does not isolate the exact CSP rule or prove media decoder failure.
+- **Current gate:** private inline WAV playback FAIL; public hosted fixture PASS. No authenticated private HTTPS media playback proven. Do not call P2X delivered.
+- **Next:** inspect MCP Apps UI CSP/media-source handling and design a nonsecret isolated diagnostic that distinguishes data URI restriction from protected-resource CSP differences, without publishing private audio or changing paid controls. Avoid repeated user calls to the known-failing private fixture.
+
 ## P2X — identical WAV mobile transport A/B result (2026-10-20)
 
 - **User-confirmed PASS:** `preview_hosted_tone` in ordinary `沈述声音MCP` produced an audible fixed 0.7-second WAV over `https://shenshu-voice-mcp.onrender.com/test-tone.wav` on iPhone in the ChatGPT native app. The user confirmed sound was heard; screenshot shows player with no load failure. This is a public, nonsecret synthetic tone only.
