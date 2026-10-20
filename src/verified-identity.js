@@ -56,7 +56,10 @@ export function createVerifiedIdentityResolver({issuer,audience,publicJwks,clock
     const nowMs=clock();
     if(!Number.isFinite(nowMs)) throw Error("not_authorized");
     const now=Math.floor(nowMs/1000);
-    if(claims.iss!==issuer || claims.aud!==audience || !goodText(claims.sub) ||
+    const audienceMatches = claims.aud===audience ||
+      (Array.isArray(claims.aud) && claims.aud.length>0 &&
+       claims.aud.every(x=>typeof x==="string") && claims.aud.includes(audience));
+    if(claims.iss!==issuer || !audienceMatches || !goodText(claims.sub) ||
        !validNumericTime(claims.iat)||!validNumericTime(claims.exp)||
        claims.exp<=now || claims.iat>now+30 || claims.exp<=claims.iat ||
        claims.exp-claims.iat>maxLifetimeSeconds ||
