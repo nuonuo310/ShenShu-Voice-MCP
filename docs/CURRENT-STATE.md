@@ -258,6 +258,22 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next exclusive gate:** obtain the existing Cloudflare Account ID and D1 Database UUID for `shenshu-voice-budget-test`, create a narrowly scoped D1 Write API Token, store all three ONLY in Render Environment together with `SHENSHU_D1_ADMISSION_DRY_RUN_ENABLED=1`, redeploy, then invoke `verify_shenshu_d1_admission` once through the already-connected OAuth MCP. Expected result: `admission_verified:true, paid_voice_enabled:false, real_quota_consumed:false`.
 - Do not expose the API token in chat or GitHub. Do not add MiniMax secrets yet.
 
+## P2V — Render -> Cloudflare D1 runtime wiring IN PROGRESS (2026-10-20)
+
+- Real OAuth identity chain is already PASS in ChatGPT: `verify_shenshu_login` was successfully called in-chat and returned `authenticated:true, paid_voice_enabled:false`.
+- Live Cloudflare D1 database `shenshu-voice-budget-test` is canonical. Its live reservation table and one-use grant table have both been manually verified; daily slot limit, request replay protection, grant issue, first consume and replay denial all PASS.
+- PostgreSQL is superseded and MUST NOT be deployed unless explicitly re-authorized.
+- Current implementation work is wiring the Render-hosted MCP to the existing Cloudflare D1 using Cloudflare's official D1 REST API, because Render cannot use a Worker-native `env.DB.prepare()` binding directly.
+- Added:
+  - `src/cloudflare-d1-http.js`: fixed Cloudflare D1 REST endpoint client using operator-only environment values;
+  - `src/d1-http-paid-store.js`: maps REST query results to reservation/grant contract;
+  - `src/d1-admission-dry-run.js`: NON-BILLABLE admission dry-run using a separate `dryrun_` principal namespace so it does not consume the authenticated user's real 3-call voice quota;
+  - staging MCP support for optional tool `verify_shenshu_d1_admission` only when explicitly enabled.
+- Cloudflare secret/config values are NEVER tool arguments or GitHub content. Intended Render-only env names: `CF_D1_ACCOUNT_ID`, `CF_D1_DATABASE_ID`, `CF_D1_API_TOKEN`, plus explicit `SHENSHU_D1_ADMISSION_DRY_RUN_ENABLED=1`.
+- The initial REST adapter tests passed, but the latest dry-run integration test is currently RED with `dryrun_budget_denied`; this is an implementation/test mismatch under investigation. **Do not ask the user to configure Cloudflare token/IDs or enable dry-run until CI is green.**
+- No MiniMax API call, no paid tool, no real quota consumption, and no Call/Voice-Worker change occurred in this slice.
+- NEXT ONLY: fix and green the dry-run test; then record exact Render environment setup and perform one authenticated, NON-BILLABLE D1 dry-run from ChatGPT. If that passes, move to private audio delivery. Do not open `speak_shenshu` yet.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
