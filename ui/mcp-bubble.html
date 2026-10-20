@@ -129,7 +129,13 @@ window.addEventListener("message",event=>{
 })();
 play.addEventListener("click",async()=>{
   try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.source==="private-fixture"?"授权测试音频（不调用 MiniMax）":record?.source==="tone-fixture"?"离线提示音测试（非沈述声音）":record?.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":"联调试听 · 固定英文样本（未调用 MiniMax）"}
-  catch{$("status").textContent="音频播放失败。"}paint();
+  catch(error){
+    const kind=typeof error?.name==="string"?error.name:"UnknownError";
+    const mediaCode=Number.isInteger(audio.error?.code)?audio.error.code:0;
+    const state=audio.readyState;
+    // Diagnostic is bounded to browser error category and media state; no URLs, tokens or audio bytes.
+    $("status").textContent=`音频播放失败（${kind}，媒体码 ${mediaCode}，就绪 ${state}）。`;
+  }paint();
 });
 audio.addEventListener("play",()=>{cancelAnimationFrame(frame);paint()});
 audio.addEventListener("pause",()=>{cancelAnimationFrame(frame);paint()});
