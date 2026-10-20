@@ -8,6 +8,7 @@
  */
 import {createProtectedResourceMetadata, unauthorizedChallenge} from "./oauth-resource-metadata.js";
 import {createConfiguredPaidDiagnostic, evaluatePaidDiagnostic} from "./configured-paid-diagnostic.js";
+import {handleStagingAuthenticatedMcp} from "./staging-authenticated-mcp.js";
 
 export const PAID_PATH = "/paid-mcp";
 export const RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource/paid-mcp";
@@ -42,6 +43,15 @@ export async function handleProtectedResourceShell(req, res, pathname, {env = pr
     return true;
   }
   if (pathname === PAID_PATH) {
+    // Explicitly enabled staging-only OAuth handshake: no paid tools.
+    // Remains disabled without operator-provisioned trusted public JWKS.
+    if (env.SHENSHU_AUTH_MCP_ENABLED === "1") {
+      await handleStagingAuthenticatedMcp(req,res,{
+        env,issuer:AUTH0_ISSUER,audience:PAID_RESOURCE,
+        resourceMetadataUrl:RESOURCE_METADATA_URL
+      });
+      return true;
+    }
     // The login-diagnostic is optional and defaults OFF. Verified identity
     // receives 403, not a paid grant. No paid tool or synthesis lives here.
     const diagnostic=createConfiguredPaidDiagnostic(env,{issuer:AUTH0_ISSUER,audience:PAID_RESOURCE});
