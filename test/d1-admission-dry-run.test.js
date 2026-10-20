@@ -1,0 +1,53 @@
+import {test} from "node:test";
+import assert from "node:assert/strict";
+import {createD1AdmissionDryRun} from "../src/d1-admission-dry-run.js";
+
+const baseEnv={
+ SHENSHU_D1_ADMISSION_DRY_RUN_ENABLED:"1",
+ CF_D1_ACCOUNT_ID:"0123456789abcdef0123456789abcdef",
+ CF_D1_DATABASE_ID:"123e4567-e89b-12d3-a456-426614174000",
+ CF_D1_API_TOKEN:"token_abcdefghijklmnopqrstuvwxyz123456"
+};
+function response(results) {
+ return {
+  ok:true,
+  headers:{get:()=>null},
+  text:async()=>JSON.stringify({success:true,result:[{success:true,results}]})
+ };
+}
+test("dry-run uses isolated principal namespace and consumes one-use grant",async()=>{
+ const calls=[];let step=0;
+ const run=createD1AdmissionDryRun({
+  env:baseEnv,
+  clock:()=>new Date("2026-10-20T12:00:00Z"),
+  idFactory:(()=>{let n=0;return()=>n++===0?"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";})(),
+  fetchImpl:undefined
+ });
+ // module's client uses global fetch; inject through temporary global for deterministic test.
+ const old=globalThis.fetch;
+ globalThis.fetch=async(url,opts)=>{
+   calls.push({url,body:JSON.parse(opts.body)});
+   step++;
+   if(step===1)return response([{request_id:"dryreq_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",slot:1}]);
+   if(step===2)return response([{grant_id:"drygrant_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]);
+   if(step===3)return response([{grant_id:"drygrant_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]);
+   return response([]);
+ };
+ try {
+   const result=await run({verifiedSubject:"owner_12345"});
+   assert.deepEqual(result,{admission_verified:true,paid_voice_enabled:false,real_quota_consumed:false});
+   assert.equal(calls.length,3);
+   const reserve=calls[0].body;
+   assert.equal(reserve.params[1],"dryrun_owner_12345");
+   assert.equal(reserve.params[2],"2026-10-20");
+   assert.equal(reserve.params[3],20);
+ } finally {globalThis.fetch=old;}
+});
+test("dry-run disabled by default and refuses invalid subject",async()=>{
+ assert.equal(createD1AdmissionDryRun({env:{}}),null);
+ const old=globalThis.fetch;globalThis.fetch=async()=>response([]);
+ try {
+   const run=createD1AdmissionDryRun({env:baseEnv});
+   await assert.rejects(()=>run({verifiedSubject:"bad"}),/not_authorized/);
+ } finally {globalThis.fetch=old;}
+});
