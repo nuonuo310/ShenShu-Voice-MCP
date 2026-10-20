@@ -11,6 +11,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createVerifiedIdentityResolver } from "./verified-identity.js";
 import { createAuth0JwksCache } from "./auth0-jwks-cache.js";
+import { createD1AdmissionDryRun } from "./d1-admission-dry-run.js";
 
 const MAX_JWKS_BYTES=65536;
 
@@ -39,12 +40,14 @@ export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=nul
   } catch {return null;}
 }
 
-export function makeStagingMcpServer() {
+export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null}={}) {
+  if(typeof verifiedSubject!=="string" || verifiedSubject.length<8) throw Error("missing_verified_subject");
   const server=new Server(
-    {name:"shenshu-identity-stage",version:"0.1.0"},
+    {name:"shenshu-identity-stage",version:"0.2.0"},
     {capabilities:{tools:{}}}
   );
-  const tool={
+  const oauth=[{type:"oauth2",scopes:["voice:speak"]}];
+  const tools=[{
     name:"verify_shenshu_login",
     title:"Verify ShenShu OAuth login",
     description:"Non-billable OAuth login handshake. Confirms authenticated access only. Generates no voice.",
@@ -58,21 +61,50 @@ export function makeStagingMcpServer() {
       required:["authenticated","paid_voice_enabled"],
       additionalProperties:false
     },
-    securitySchemes:[{type:"oauth2",scopes:["voice:speak"]}],
-    _meta:{securitySchemes:[{type:"oauth2",scopes:["voice:speak"]}]}
-  };
-  server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:[tool]}));
+    securitySchemes:oauth,
+    _meta:{securitySchemes:oauth}
+  }];
+  if(typeof admissionDryRun==="function") {
+    tools.push({
+      name:"verify_shenshu_d1_admission",
+      title:"Verify ShenShu D1 admission gate",
+      description:"Non-billable dry-run of the real Cloudflare D1 quota and one-time grant path. Uses a separate dry-run quota namespace and never calls MiniMax.",
+      inputSchema:{type:"object",properties:{},additionalProperties:false},
+      outputSchema:{
+        type:"object",
+        properties:{
+          admission_verified:{type:"boolean"},
+          paid_voice_enabled:{type:"boolean"},
+          real_quota_consumed:{type:"boolean"}
+        },
+        required:["admission_verified","paid_voice_enabled","real_quota_consumed"],
+        additionalProperties:false
+      },
+      securitySchemes:oauth,
+      _meta:{securitySchemes:oauth}
+    });
+  }
+  server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
   server.setRequestHandler(CallToolRequestSchema,async request=>{
-    if(request.params.name!==tool.name) throw new Error("unknown_tool");
     const args=request.params.arguments;
     if(args!==undefined && (
       args===null || typeof args!=="object" || Array.isArray(args) ||
       Object.keys(args).length!==0
     )) throw new Error("invalid_arguments");
-    return {
-      content:[{type:"text",text:"身份已验证。沈述付费语音尚未开放。"}],
-      structuredContent:{authenticated:true,paid_voice_enabled:false}
-    };
+    if(request.params.name==="verify_shenshu_login") {
+      return {
+        content:[{type:"text",text:"身份已验证。沈述付费语音尚未开放。"}],
+        structuredContent:{authenticated:true,paid_voice_enabled:false}
+      };
+    }
+    if(request.params.name==="verify_shenshu_d1_admission" && typeof admissionDryRun==="function") {
+      const result=await admissionDryRun({verifiedSubject});
+      return {
+        content:[{type:"text",text:"D1 额度与一次性授权门禁已通过 dry-run；未调用 MiniMax。"}],
+        structuredContent:result
+      };
+    }
+    throw new Error("unknown_tool");
   });
   return server;
 }
@@ -99,8 +131,9 @@ export async function handleStagingAuthenticatedMcp(req,res,{
     refuse(401,"unauthorized",{"WWW-Authenticate":challenge});
     return;
   }
+  let verifiedIdentity;
   try {
-    await verifier({headers:req.headers});
+    verifiedIdentity=await verifier({headers:req.headers});
   } catch(error) {
     const missingScope=error?.message==="insufficient_scope";
     refuse(missingScope?403:401,missingScope?"insufficient_scope":"unauthorized",
@@ -111,7 +144,8 @@ export async function handleStagingAuthenticatedMcp(req,res,{
     refuse(405,"method_not_allowed",{"Allow":"POST, GET, DELETE"});
     return;
   }
-  const server=makeStagingMcpServer();
+  const admissionDryRun=createD1AdmissionDryRun({env});
+  const server=makeStagingMcpServer({verifiedSubject:verifiedIdentity.subject,admissionDryRun});
   const transport=new StreamableHTTPServerTransport({
     sessionIdGenerator:undefined,enableJsonResponse:true
   });
