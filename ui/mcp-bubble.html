@@ -55,8 +55,8 @@ const pending=new Map();
 function reportMediaCapability(){
   try{
     const capability=audio.canPlayType("audio/wav")||"none";
-    const blobAvailable=typeof URL.createObjectURL==="function"&&typeof Blob==="function";
-    $("capability").textContent="音频能力：WAV "+capability+" · Blob "+(blobAvailable?"可创建":"不可创建")+"（未测试播放）";
+    const blobAvailable=typeof Blob==="function";
+    $("capability").textContent="音频能力：WAV "+capability+" · Blob API "+(blobAvailable?"存在":"不可用")+"（未测试地址创建或播放）";
   }catch{$("capability").textContent="音频能力：检测不可用";}
 }
 reportMediaCapability();
