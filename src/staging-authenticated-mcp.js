@@ -18,7 +18,7 @@ import { preparePrivateFixtureAudio } from "./private-fixture-delivery.js";
 import { makeInlineToneFixture } from "./inline-fixture.js";
 
 const MAX_JWKS_BYTES=65536;
-const PRIVATE_FIXTURE_UI_URI="ui://shenshu/private-fixture-bubble-v1.html";
+const PRIVATE_FIXTURE_UI_URI="ui://shenshu/private-fixture-bubble-v2.html";
 const privateFixtureUi=readFileSync(new URL("../ui/mcp-bubble.html",import.meta.url),"utf8");
 // Server-side exact resource specialization, not an iframe URL heuristic.
 const oauthBridgeUi=privateFixtureUi.replace('const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");','const isOAuthBubble=true;');
