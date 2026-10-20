@@ -83,7 +83,10 @@ function applyResponse(response){
   $("text").textContent=typeof next.text==="string"?next.text:"";
   try{
     let target;
-    if(next.source==="tone-fixture"&&next.generated===false&&next.audioBase64){
+    if(next.source==="private-fixture"&&next.generated===false&&next.audioBase64&&next.audioUrl===undefined){
+      target=inlineAudioUrl(next);
+      $("status").textContent="授权测试音频（不调用 MiniMax）";
+    }else if(next.source==="tone-fixture"&&next.generated===false&&next.audioBase64){
       target=inlineAudioUrl(next);
       $("status").textContent="离线提示音测试（并非沈述语音，不扣积分）";
     }else if(next.source==="hosted-tone"&&next.generated===false&&
@@ -125,7 +128,7 @@ window.addEventListener("message",event=>{
   }catch{$("status").textContent="MCP Apps UI 初始化失败。"}
 })();
 play.addEventListener("click",async()=>{
-  try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.source==="tone-fixture"?"离线提示音测试（非沈述声音）":record?.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":"联调试听 · 固定英文样本（未调用 MiniMax）"}
+  try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.source==="private-fixture"?"授权测试音频（不调用 MiniMax）":record?.source==="tone-fixture"?"离线提示音测试（非沈述声音）":record?.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":"联调试听 · 固定英文样本（未调用 MiniMax）"}
   catch{$("status").textContent="音频播放失败。"}paint();
 });
 audio.addEventListener("play",()=>{cancelAnimationFrame(frame);paint()});
