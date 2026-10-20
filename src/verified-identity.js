@@ -25,9 +25,12 @@ function parseObject(part) {
 function goodText(s) { return typeof s==="string" && s.length>0 && s.length<=512; }
 const validNumericTime=n=>Number.isSafeInteger(n) && n>=0;
 
-export function createVerifiedIdentityResolver({issuer,audience,publicJwks,clock=()=>Date.now(),maxLifetimeSeconds=3600}) {
+export function createVerifiedIdentityResolver({issuer,audience,publicJwks,clock=()=>Date.now(),maxLifetimeSeconds=3600,requiredScopes=[]}) {
   if(!goodText(issuer)||!goodText(audience)||!Array.isArray(publicJwks)||publicJwks.length<1||
-    !Number.isSafeInteger(maxLifetimeSeconds)||maxLifetimeSeconds<1||maxLifetimeSeconds>86400)
+    !Number.isSafeInteger(maxLifetimeSeconds)||maxLifetimeSeconds<1||maxLifetimeSeconds>86400||
+    !Array.isArray(requiredScopes)||requiredScopes.length>10||
+    !requiredScopes.every(x=>typeof x==="string" && /^[a-zA-Z][a-zA-Z0-9:_-]{1,63}$/.test(x))||
+    new Set(requiredScopes).size!==requiredScopes.length)
     throw Error("invalid_auth_configuration");
   const keys=new Map();
   for (const jwk of publicJwks) {
@@ -59,6 +62,12 @@ export function createVerifiedIdentityResolver({issuer,audience,publicJwks,clock
        claims.exp-claims.iat>maxLifetimeSeconds ||
        (claims.nbf!==undefined && (!validNumericTime(claims.nbf)||claims.nbf>now)))
        throw Error("not_authorized");
+    // OAuth access must be explicitly scoped. A valid signature alone is
+    // insufficient permission to invoke a billable voice operation.
+    const granted = typeof claims.scope === "string"
+      ? claims.scope.split(" ").filter(Boolean)
+      : (Array.isArray(claims.scp) && claims.scp.every(x=>typeof x==="string") ? claims.scp : []);
+    if (!requiredScopes.every(scope=>granted.includes(scope))) throw Error("insufficient_scope");
     // Stable opaque DB principal; valid with PaidVoiceGate's identifier pattern.
     const subject=createHash("sha256").update(issuer+"\0"+claims.sub).digest("base64url").slice(0,43);
     return Object.freeze({verified:true,subject});
