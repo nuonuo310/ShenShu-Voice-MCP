@@ -22,6 +22,7 @@ const PRIVATE_FIXTURE_UI_URI="ui://shenshu/private-fixture-bubble-v1.html";
 const privateFixtureUi=readFileSync(new URL("../ui/mcp-bubble.html",import.meta.url),"utf8");
 // Server-side exact resource specialization, not an iframe URL heuristic.
 const oauthBridgeUi=privateFixtureUi.replace('const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");','const isOAuthBubble=true;');
+if(oauthBridgeUi===privateFixtureUi)throw Error("oauth_bridge_ui_specialization_missing");
 
 export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=null}={}) {
   if(env?.SHENSHU_AUTH_MCP_ENABLED!=="1") return null;
