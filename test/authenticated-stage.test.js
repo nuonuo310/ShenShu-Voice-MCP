@@ -64,6 +64,9 @@ test("P2M protected MCP: RSA identity, scope and audience gates; no paid tool",a
     const body=await list.json();
     const names=body.result?.tools?.map(x=>x.name)||[];
     assert.deepEqual(names,["verify_shenshu_login"]);
+    const descriptor=body.result.tools.find(x=>x.name==="verify_shenshu_login");
+    assert.deepEqual(descriptor.securitySchemes,[{type:"oauth2",scopes:["voice:speak"]}]);
+    assert.equal(descriptor.title,"Verify ShenShu OAuth login");
     const unauthList=await post("tools/list",8,null);
     assert.equal(unauthList.status,401);
     const invoke=await fetch(base+"/paid-mcp",{
