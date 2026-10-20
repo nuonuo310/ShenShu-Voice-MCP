@@ -310,6 +310,13 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No secrets, Cloudflare IDs, verified principal, request/grant identifiers, or SQL payloads are recorded in this checkpoint.
 
 
+## P2X — OAuth HTTPS WAV iPhone PASS after narrow CSP allowlist (2026-10-20)
+
+- User-confirmed on ChatGPT native iPhone App after Render `45ce17a` Live: OAuth identity-test tool `preview_oauth_hosted_tone_control` called once, returned existing voice bubble; initial transient load-failure message appeared for a few seconds, then cleared to `HTTPS 固定提示音测试（不扣积分）`; tapping play produced audible WAV. **OAuth UI + public fixed HTTPS WAV: PASS (audible)**.
+- This followed PR #24 adding only `https://shenshu-voice-mcp.onrender.com` to OAuth UI `resourceDomains` (connectDomains remains empty). Evidence strongly implicates resource/CSP policy in previous HTTPS failure, but transient error and lack of independent CSP traces prevent definitive single-cause attribution.
+- **NOT YET PASS:** OAuth `preview_private_fixture` inline data WAV still previously failed at `private-inline` media code 4; no private authenticated HTTPS generated speech delivery, no real MiniMax synthesis or paid voice release.
+- **Next exclusive engineering step:** inspect/repair transient media load error state reporting without changing working HTTPS playback; then design authenticated private media retrieval (do not treat publicly hosted test-tone as private). Avoid re-running already successful hosted control unnecessarily.
+
 ## P2X — SAME-RUNTIME native ChatGPT iPhone comparison (2026-10-20, user confirmed)
 
 - **Public HTTPS WAV PASS:** In native ChatGPT iPhone App, ordinary `沈述声音MCP` tool `preview_hosted_tone` produced an audible 0.7-second fixed synthetic WAV from `/test-tone.wav` (one call, user confirmed).
