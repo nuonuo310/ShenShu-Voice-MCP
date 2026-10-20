@@ -310,6 +310,14 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No secrets, Cloudflare IDs, verified principal, request/grant identifiers, or SQL payloads are recorded in this checkpoint.
 
 
+## P2X — iPhone OAuth bridge Web Audio playback PASS (2026-10-20)
+
+- **User-confirmed native ChatGPT iPhone App audible PASS:** after Render deployed `e498e57` Live and MCP tool refresh, OAuth bubble displayed `试听桥接 WAV（非计费）`. User manually clicked and heard sound. This confirms fixed synthetic WAV payload from the OAuth-protected app-only MCP tool was transferred through host bridge, decoded via Web Audio and audibly played on iPhone. No public audio URL or data/blob URI was required for this playback route.
+- PR #37 CI #226 PASS, merged `e498e57`. The existing public HTTPS fixture and normal player remain separate, working baselines.
+- **Scope of PASS:** fixed nonbillable synthetic tone and manual user gesture only. Not real ShenShu voice synthesis, not dynamic text-to-speech, not private durable media storage, not D1 paid admission, and not billable MiniMax. No automatic speech of assistant replies yet.
+- **Next exclusive gate:** independently audit per-request OAuth principal binding, authorized text-to-audio invocation and durable quota/grant enforcement before any paid synthesis. Reuse the working OAuth host bridge + Web Audio output path; do not rebuild player or publish private audio URLs.
+- **Mandatory client refresh lesson:** after Render Live for UI resource changes, refresh MCP tools once if new UI controls do not appear. Do not repeatedly open chats or rewrite working code before this check.
+
 ## P2X — iPhone OAuth bridge WAV payload inspection PASS (2026-10-20)
 
 - User opened an existing native ChatGPT iPhone chat after Render `fecc47e` Live; the existing OAuth bubble exposed the newly deployed `检查桥接 WAV 数据` button **without another model tool call**. This is observed UI resource refresh behavior; the exact cache mechanism is unknown.
