@@ -6,6 +6,8 @@ export async function executeBoundedD1Qualification({plan,store,approved=false}=
  const checked=buildD1QualificationPlan({testPrincipal:plan.testPrincipal,day:plan.day,runId:plan.runId,attempts:plan.attempts,limit:plan.limit});
  if(!Array.isArray(plan.requests)||plan.requests.length!==checked.requests.length||plan.requests.some((id,i)=>id!==checked.requests[i]))throw Error("invalid_qualification_plan");
  if(!store||typeof store.reserveAtomic!=="function"||typeof store.issue!=="function"||typeof store.consume!=="function")throw Error("missing_store");
+ // OFFLINE FAKE ONLY. This function is not an authorized live D1 runner.
+ if(store.__offlineFakeQualificationStore!==true)throw Error("live_store_forbidden");
  // No automatic retries. Only one bounded batch of reservation attempts.
  const results=await Promise.allSettled(checked.requests.map(requestId=>store.reserveAtomic({subject:checked.testPrincipal,day:checked.day,requestId,limit:3})));
  if(results.some(r=>r.status!=="fulfilled"))throw Error("ambiguous_reservation_stop");
