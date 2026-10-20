@@ -7,7 +7,7 @@ export function buildD1QualificationPlan({testPrincipal,day,runId=randomUUID().r
  const requests=Array.from({length:attempts},(_,i)=>"dryreq_"+runId+"_"+String(i+1).padStart(2,"0"));
  if(requests.some(id=>!ID.test(id)))throw Error("invalid_qualification_plan");
  return Object.freeze({mode:"plan_only",writesEnabled:false,networkEnabled:false,paidVoiceEnabled:false,
-  testPrincipal,day,attempts,limit,requests:Object.freeze(requests),
+  testPrincipal,day,runId,attempts,limit,requests:Object.freeze(requests),
   readOnlySql:Object.freeze([
    "PRAGMA foreign_keys;",
    "PRAGMA foreign_key_check;",
