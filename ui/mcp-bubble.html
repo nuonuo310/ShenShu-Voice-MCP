@@ -42,6 +42,8 @@ body{margin:0;padding:10px;background:transparent}
   <p class="text" id="text"></p>
   <p class="status" id="status">等待 MCP 工具结果…</p>
   <p class="status" id="capability" aria-live="polite"></p>
+  <button id="bridge-probe" type="button" hidden>检查 OAuth 通信桥</button>
+  <p class="status" id="bridge-result" aria-live="polite"></p>
 </div>
 <audio id="audio" preload="metadata" playsinline></audio>
 <script type="module">
@@ -140,6 +142,21 @@ window.addEventListener("message",event=>{
     notify("ui/notifications/initialized",{});
   }catch{$("status").textContent="MCP Apps UI 初始化失败。"}
 })();
+const bridgeProbe=$("bridge-probe");
+// Only OAuth private-fixture resource may opt in; public /mcp bubble remains unchanged.
+const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");
+if(isOAuthBubble){bridgeProbe.hidden=false;}
+bridgeProbe.addEventListener("click",async()=>{
+  if(!isOAuthBubble)return;
+  bridgeProbe.disabled=true;
+  $("bridge-result").textContent="通信桥检测中…";
+  try{
+    const result=await request("tools/call",{name:"probe_oauth_ui_bridge",arguments:{}});
+    const info=result?.structuredContent;
+    $("bridge-result").textContent=info?.bridge_verified===true&&info?.paid_voice_enabled===false&&info?.audio_returned===false?"OAuth 通信桥：成功（无音频、无计费）":"OAuth 通信桥：返回结果不符合预期";
+  }catch{$("bridge-result").textContent="OAuth 通信桥：调用失败";}
+  finally{bridgeProbe.disabled=false;}
+});
 play.addEventListener("click",async()=>{
   try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.source==="private-fixture"?"授权测试音频（不调用 MiniMax）":record?.source==="tone-fixture"?"离线提示音测试（非沈述声音）":record?.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":"联调试听 · 固定英文样本（未调用 MiniMax）"}
   catch(error){
