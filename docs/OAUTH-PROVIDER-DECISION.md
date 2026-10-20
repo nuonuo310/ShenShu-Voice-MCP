@@ -20,10 +20,19 @@ This is not proof that a tenant, DCR or ChatGPT login works in our own project.
 - The paid resource audience should be the full new paid MCP URL. Auth0 API identifier must be configured to issue access tokens for that audience.
 - Auth0 tenant issuer is **not yet known**, must be operator-configured from an actual Auth0 account, never inferred from a user-submitted token or tool arguments.
 - The protected resource metadata must advertise the actual Auth0 issuer and paid MCP resource.
-- Prefer DCR where Auth0 tenant explicitly supports it and registration can be safely limited. Follow connector's actual ChatGPT callback/client registration mode rather than hardcoding redirect URIs.
+- Prefer controlled client registration (a provided client or CIMD, where compatible) before considering DCR. Auth0 open DCR can register arbitrary third-party clients; third-party API access also needs explicit client grants. Do not enable DCR or broad default grants as a shortcut. Follow the actual ChatGPT registration requirements; do not hardcode callback URIs.
 - OAuth auth-code + PKCE S256, explicit `voice:speak` permission, and signed access token with correct `iss`, `aud`, `exp` and `scope`.
 - Validate signing keys against a pin/trusted HTTPS JWKS and reject insecure key refresh / untrusted algorithm.
 - Verify issuer/audience/signature/expiry/scope **on each privileged MCP call**; an identity token or unsigned claim must never substitute for a resource-scoped access token.
+
+## 2026-10-20 onboarding checkpoint
+
+- User reports creating the Auth0 API with Identifier `https://shenshu-voice-mcp.onrender.com/paid-mcp` and RS256, and adding `voice:speak` in its Permissions table. This is USER-REPORTED, not remotely verified by this repo's GitHub tools.
+- Actual tenant domain, issuer, OAuth metadata, client registration policy and real access token **remain unverified**. No credentials are requested in chat.
+- OpenAI plugin authentication guidance supports provided client, CIMD and DCR depending on connection setup. Prefer controlled registration; evaluate whether Auth0 account/plan supports it.
+- Auth0 documentation: DCR is an open registration mechanism and may allow arbitrary clients to enroll; third-party applications require an explicit API client grant. Do not enable open DCR without a narrowly constrained authorization design.
+- Check Auth0's `Resource Parameter Compatibility Profile` if an MCP flow later fails because `resource` does not produce the expected API audience; verify actual token `aud` rather than assuming.
+- Verified public references: https://developers.openai.com/plugins/build/auth ; https://developers.openai.com/plugins/deploy/submission ; https://support.auth0.com/center/s/article/Dynamic-Client-Registration ; https://support.auth0.com/center/s/article/mcp-audience-error-with-auth0
 
 ## Before provider activation
 
