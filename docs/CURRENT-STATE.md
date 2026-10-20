@@ -95,6 +95,16 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No Auth0 callbacks were entered by the user. The existing SPA application's Allowed Callback URLs should remain unchanged until ChatGPT's real registered redirect is known.
 - **Next gate:** verify Render actually deployed this commit, then perform non-paid OAuth client registration / login compatibility tests against the separate protected route. Do NOT open `speak_shenshu` before real identity, durable quota, one-use grant and secure audio delivery are independently proven.
 
+## P2K — verified identity diagnostic gate, no paid capability (2026-10-20)
+
+- Added `src/paid-auth-probe.js` and `test/paid-auth-probe.test.js`. Offline-only injection of RS256 verifier, pinned Auth0 issuer, exact paid-mcp audience, explicit `voice:speak` scope.
+- Defaults DISABLED. When enabled in tests, valid signed identity returns **403 paid_voice_disabled**, never an authorization to use MiniMax. Missing/forged/wrong-audience/expired tokens return 401; valid token without scope returns 403 insufficient_scope.
+- No verified identity/credential details are exposed to callers. No real Auth0 token has been obtained. This code is deliberately NOT imported by public `server.js`; no deployment of authenticated probe occurred.
+- Code commit `e89a00dc18a01fb284f835a76d6b8f16ba156e9a` GitHub CI completed SUCCESS.
+- User has created Auth0 API, voice:speak permission, and SPA client; Allowed Callback URLs remain unfilled by agreement. No secret supplied or needed for this mock.
+- **Next exclusive gate:** obtain the exact OAuth redirect from the ChatGPT MCP management flow, confirm provided-client registration works with the SPA's actual Auth0 client ID and resource/audience parameter, then connect an isolated staging auth verifier with trusted JWKS. Do NOT accept a real paid request until durable budget, single-use server grant, private audio delivery and explicit user approval are all proven.
+- The existing no-auth `/mcp` and fail-closed `/paid-mcp` endpoints, Asteria-Call, Voice-Worker and voice gallery remain untouched.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
