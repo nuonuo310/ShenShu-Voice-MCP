@@ -21,7 +21,7 @@ test("accept valid signed token and derive stable opaque principal",async()=>{
 });
 test("reject unsigned, tampered, wrong algorithm, unknown key",async()=>{
  await assert.rejects(resolve({headers:{}}),/not_authorized/);
- await assert.rejects(resolve(req(token().slice(0,-1)+"A")),/not_authorized/);
+ await assert.rejects(resolve(req((()=>{const p=token().split(".");const bytes=Buffer.from(p[1],"base64url");bytes[10]^=1;p[1]=bytes.toString("base64url");return p.join(".")})())),/not_authorized/);
  await assert.rejects(resolve(req(token({}, {alg:"none"}))),/not_authorized/);
  await assert.rejects(resolve(req(token({}, {kid:"unknown"}))),/not_authorized/);
 });
