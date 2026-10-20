@@ -117,6 +117,17 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - Original `/mcp` mock, Call, Voice Worker, voice gallery and billable TTS remain untouched.
 - Next step: collect the exact ChatGPT OAuth redirect from the new connector setup and Auth0 app's nonsecret Client ID through user-controlled UI; verify controlled registration and audience without asking for Client Secret, access token, or credentials.
 
+## P2M — authenticated non-billable MCP handshake (2026-10-20)
+
+- Code: `src/staging-authenticated-mcp.js` and `test/authenticated-stage.test.js` added; `src/protected-resource-shell.js` conditionally routes requests to the non-billable stage.
+- **Default remains LOCKED**: unless Render has `SHENSHU_AUTH_MCP_ENABLED=1` and operator-validated `SHENSHU_AUTH_PUBLIC_JWKS_JSON`, `/paid-mcp` continues returning 401 without opening a paid tool.
+- With test-only generated RSA keys configured, every MCP HTTP request validates signature, pinned issuer, exact `/paid-mcp` audience, expiry, and `voice:speak` scope. Authenticated clients can initialize and invoke only `verify_shenshu_login`, returning `paid_voice_enabled:false`. Invalid, expired, wrong audience or missing scope requests denied; subsequent unsigned tool calls also denied.
+- Code/test commit `9f5fbabba09c885ec3ea53a754aa6ffa1a211b4b` GitHub CI **SUCCESS**. Test uses fake keys only. No real Auth0 token, no real paid synthesis.
+- Saved all user-confirmed NONSECRET Auth0/ChatGPT OAuth field values to `docs/OAUTH-SETUP-REFERENCE.md`; users no longer need to keep the ChatGPT creation form open to retrieve settings.
+- **This does not mean production OAuth works.** Real Auth0 JWKS keys are not provisioned or refreshed; user authorization callback flow and resource-audience token are not verified. Paid tools, quota writes, private audio delivery and MiniMax remain absent.
+- NEXT ONLY: independently verify tenant's public JWKS and design safe key rotation/fail-closed handling; obtain explicit approval before enabling even the non-billable diagnostic in Render. Then test ChatGPT login once, without replacing the public MOCK connection.
+- Do not touch Asteria-Call, original Voice Worker, or voice gallery.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
