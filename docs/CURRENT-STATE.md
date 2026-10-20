@@ -309,6 +309,19 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next authorized work:** read-only contract/code audit and test planning only. Do not provision MiniMax credentials, enable `speak_shenshu`, alter quota limits, or rerun live D1 admission without separate approval.
 - No secrets, Cloudflare IDs, verified principal, request/grant identifiers, or SQL payloads are recorded in this checkpoint.
 
+
+## P2X — operational checkpoint / no rework (2026-10-20)
+
+**Completed / verified:** Existing ChatGPT public mock player rendered and played an HTTPS fixture on iPhone per user confirmation (do not rebuild player). OAuth -> live D1 nonbillable admission PASS was reported once with `admission_verified:true,paid_voice_enabled:false,real_quota_consumed:false`. Render previously deployed OAuth private fixture tool with `SHENSHU_PRIVATE_FIXTURE_ENABLED=1`; user confirmed Live and tool invocation once, with player displayed. **Playback FAILED** on iPhone: `NotSupportedError`, media error `4`, readyState `0` for private inline WAV. Do NOT label mobile private audio delivery PASS.
+
+**Repository work:** PR #5 offline private fixture delivery merged `72699ac`; PR #6 UI private-fixture adapter merged `b1e4c4c`; PR #7 OAuth private fixture tool/UI resource merged `ebf7452`; PR #8 safe playback diagnostics merged `44595a3`; PR #11 HTTPS security decision merged `9c39c6b`; PR #12 offline authenticated HTTPS WAV response contract merged `f522af2`. CI #167 PASS for PR #12. PR #9 Blob URL probe FAILED CI #163 due to explicit CSP/data URI invariant and remains draft; PR #10 offline in-memory one-use tickets CI #164 PASS but remains draft, NOT production deployable. The original mock player and public fixture must be preserved.
+
+**Current blocker:** ChatGPT iPhone private inline WAV playback fails; successful public HTTPS fixture is NOT evidence that an OAuth-protected media URL can be fetched by HTMLAudioElement. Ordinary audio src cannot attach OAuth bearer header. No private HTTPS media route, durable audio storage, or authorized browser playback proven. The offline response contract is not a deployed service.
+
+**Next exclusive step:** Investigate an authenticated browser-to-HTTPS audio delivery mechanism that preserves privacy and works with MCP Apps iPhone sandbox/CSP; implement only isolated tests/prototypes until an end-to-end nonbillable phone test can be authorized. Reuse existing UI. No secret/ticket in URL, no permanent public audio URL. Audit durable single-use authorization separately before MiniMax.
+
+**DO NOT:** Reconfigure Cloudflare D1, repeat OAuth setup, recreate the player, merge PR #9 merely to green CI, deploy in-memory PR #10 as production, expose `speak_shenshu`, run MiniMax or spend paid quota, alter Asteria-Call/Voice-Worker. Prior old PostgreSQL/"OAuth not implemented" paragraphs below are historical and superseded by newer P2W/P2X checkpoints.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
