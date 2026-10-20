@@ -28,7 +28,7 @@ test("dry-run uses isolated principal namespace and consumes one-use grant",asyn
  const run=createD1AdmissionDryRun({
   env:baseEnv,
   clock:()=>new Date("2026-10-20T12:00:00Z"),
-  idFactory:(()=>{let n=0;return()=>n++===0?"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";})(),
+  idFactory:(()=>{let n=0;return()=>n++===0?"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";})(),
   fetchImpl
  });
  const result=await run({verifiedSubject:"owner_12345"});
