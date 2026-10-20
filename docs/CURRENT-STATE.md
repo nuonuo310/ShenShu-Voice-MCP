@@ -158,6 +158,20 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next authorized gate:** enable ONLY the non-billable OAuth staging handshake on Render with `SHENSHU_AUTH_MCP_ENABLED=1`. Do not add MiniMax secrets or any paid tool. Then create a separate ChatGPT connector pointed at `/paid-mcp` using the saved provided-client OAuth settings and test one real login. Expected authenticated toolset: ONLY `verify_shenshu_login`, returning `paid_voice_enabled:false`.
 - If login fails due to audience/resource/scope/callback, STOP and diagnose; do not weaken validation. Existing public `/mcp`, Asteria-Call, Voice Worker and Voice Gallery remain untouched.
 
+## P2Q — ChatGPT action discovery compatibility fix (2026-10-20)
+
+- User observed real ChatGPT UI status: **"Authentication succeeded, action discovery failed"** after Gmail login. This proves the OAuth flow reached a successful authentication state; failure moved to MCP action/tool discovery.
+- Root causes addressed without weakening auth:
+  1. JWT `aud` validation now accepts either the exact resource string or a standards-compliant audience array containing the exact `/paid-mcp` resource; arrays not containing it still fail.
+  2. Auth0 staging verifier permits up to 86400-second access-token lifetime (Auth0 API default may be 24h), while still enforcing signed `exp/iat/nbf`, issuer, resource audience and `voice:speak`.
+  3. Staging identity MCP was migrated from high-level `McpServer.registerTool()` to low-level `Server` request handlers solely for the one non-billable test tool, because MCP SDK v1 does not serialize OpenAI-required root-level `securitySchemes` from the high-level registry.
+- `tools/list` now emits one deterministic tool `verify_shenshu_login` with root-level and mirrored `_meta.securitySchemes=[{type:"oauth2",scopes:["voice:speak"]}]`, strict empty-object input schema and structured output showing `paid_voice_enabled:false`.
+- Low-level `tools/call` handler manually enforces exact tool name and zero-argument schema to avoid the low-level SDK input-validation gap.
+- Implementation commit `834c597e3d6e1bd73cc769f3fe89738166b6b3ea` CI **SUCCESS**, including the authenticated HTTP discovery assertion for root-level securitySchemes.
+- OpenAI current auth docs require protected resource metadata + per-tool `securitySchemes`; OAuth authentication alone is insufficient for tool discovery/linking.
+- No paid tool, MiniMax call, quota mutation or private audio path was introduced. Public MOCK `/mcp`, Asteria-Call, Voice Worker and Voice Gallery remain unchanged.
+- **Next exclusive gate:** wait for Render to deploy this commit, then reconnect the existing "沈述声音MCP-身份测试" once. Expected outcome: action discovery succeeds and the only discovered tool is `verify_shenshu_login`. If discovery still fails, inspect Auth0 token audience/scope or Render logs; do not weaken security or reconfigure Auth0 blindly.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
