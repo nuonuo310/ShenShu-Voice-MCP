@@ -180,7 +180,7 @@ export const httpServer = createHttpServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
 
   // Staging auth resource: denies ALL paid calls, never creates an MCP session.
-  if (handleProtectedResourceShell(req, res, url.pathname)) return;
+  if (await handleProtectedResourceShell(req, res, url.pathname)) return;
 
   if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
     res.writeHead(204, {
