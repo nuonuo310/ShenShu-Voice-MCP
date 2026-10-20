@@ -17,15 +17,7 @@ function response(results) {
 }
 test("dry-run uses isolated principal namespace and consumes one-use grant",async()=>{
  const calls=[];let step=0;
- const run=createD1AdmissionDryRun({
-  env:baseEnv,
-  clock:()=>new Date("2026-10-20T12:00:00Z"),
-  idFactory:(()=>{let n=0;return()=>n++===0?"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";})(),
-  fetchImpl:undefined
- });
- // module's client uses global fetch; inject through temporary global for deterministic test.
- const old=globalThis.fetch;
- globalThis.fetch=async(url,opts)=>{
+ const fetchImpl=async(url,opts)=>{
    calls.push({url,body:JSON.parse(opts.body)});
    step++;
    if(step===1)return response([{request_id:"dryreq_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",slot:1}]);
@@ -33,21 +25,22 @@ test("dry-run uses isolated principal namespace and consumes one-use grant",asyn
    if(step===3)return response([{grant_id:"drygrant_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]);
    return response([]);
  };
- try {
-   const result=await run({verifiedSubject:"owner_12345"});
-   assert.deepEqual(result,{admission_verified:true,paid_voice_enabled:false,real_quota_consumed:false});
-   assert.equal(calls.length,3);
-   const reserve=calls[0].body;
-   assert.equal(reserve.params[1],"dryrun_owner_12345");
-   assert.equal(reserve.params[2],"2026-10-20");
-   assert.equal(reserve.params[3],20);
- } finally {globalThis.fetch=old;}
+ const run=createD1AdmissionDryRun({
+  env:baseEnv,
+  clock:()=>new Date("2026-10-20T12:00:00Z"),
+  idFactory:(()=>{let n=0;return()=>n++===0?"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";})(),
+  fetchImpl
+ });
+ const result=await run({verifiedSubject:"owner_12345"});
+ assert.deepEqual(result,{admission_verified:true,paid_voice_enabled:false,real_quota_consumed:false});
+ assert.equal(calls.length,3);
+ const reserve=calls[0].body;
+ assert.equal(reserve.params[1],"dryrun_owner_12345");
+ assert.equal(reserve.params[2],"2026-10-20");
+ assert.equal(reserve.params[3],20);
 });
 test("dry-run disabled by default and refuses invalid subject",async()=>{
  assert.equal(createD1AdmissionDryRun({env:{}}),null);
- const old=globalThis.fetch;globalThis.fetch=async()=>response([]);
- try {
-   const run=createD1AdmissionDryRun({env:baseEnv});
-   await assert.rejects(()=>run({verifiedSubject:"bad"}),/not_authorized/);
- } finally {globalThis.fetch=old;}
+ const run=createD1AdmissionDryRun({env:baseEnv,fetchImpl:async()=>response([])});
+ await assert.rejects(()=>run({verifiedSubject:"bad"}),/not_authorized/);
 });
