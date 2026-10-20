@@ -286,6 +286,18 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No MiniMax call, no paid tool, no real quota mutation, and no Call/Voice-Worker changes occurred.
 - **Next exclusive gate:** provision three Render secrets/variables for the existing D1 database and enable the dry-run flag, redeploy, then invoke `verify_shenshu_d1_admission` once through the already-connected OAuth MCP. If it returns the three expected booleans, OAuth->D1 runtime admission is PASS. Do not add MiniMax secrets yet.
 
+## P2W — OAuth-to-D1 non-billable dry-run ready (2026-10-20)
+
+- Added Render-to-Cloudflare D1 REST adapter `src/cloudflare-d1-http.js`, D1 paid-store HTTP adapter, and non-billable `src/d1-admission-dry-run.js`.
+- Runtime design: Render talks only to the existing Cloudflare D1 through Cloudflare's official REST API. Account ID, database ID and D1 API token come only from Render environment; never tool arguments, GitHub, MCP results or UI.
+- Dry-run is separately gated by `SHENSHU_D1_ADMISSION_DRY_RUN_ENABLED=1`; absent/misconfigured values mean no dry-run tool is exposed.
+- Authenticated stage now conditionally exposes `verify_shenshu_d1_admission`. It uses the verified OAuth principal but rewrites it into a separate `dryrun_` principal namespace and limit 20 so real paid daily quota is not consumed.
+- Dry-run performs the real D1 reservation -> grant issue -> one-time consume sequence and returns only `admission_verified:true, paid_voice_enabled:false, real_quota_consumed:false`. It does not expose principal/request/grant IDs and never imports/calls MiniMax.
+- Cloudflare REST and adapter tests are green. After correcting test fixture IDs to echo the actual bound UUID-derived values, commit `1300888d86e86ede3e6aeacf864c5030ad37da0f` CI **SUCCESS**.
+- No Cloudflare API credentials have been configured yet. No live Render-to-D1 request has occurred from this new path.
+- **Next exclusive gate:** configure Render secrets `CF_D1_ACCOUNT_ID`, `CF_D1_DATABASE_ID`, `CF_D1_API_TOKEN` and `SHENSHU_D1_ADMISSION_DRY_RUN_ENABLED=1`, using a narrowly scoped Cloudflare token with D1 write access to the intended account. Then reconnect/refresh the existing OAuth test connector and call ONLY `verify_shenshu_d1_admission` once. Expected: `admission_verified:true`, `paid_voice_enabled:false`, `real_quota_consumed:false`.
+- Still no MiniMax key/tool, private audio delivery, or paid synthesis.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
