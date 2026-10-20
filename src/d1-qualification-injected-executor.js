@@ -1,13 +1,34 @@
 /** Bounded qualification engine: injected store only, never opens network or credentials. */
 import {buildD1QualificationPlan} from "./d1-qualification-plan-only.js";
-export async function executeBoundedD1Qualification({plan,store,approved=false}={}){
+function createOfflineFakeStore(){
+ const reservations=new Map(),grants=new Map(),slots=new Set();
+ return {
+  async reserveAtomic({subject,day,requestId,limit}){
+   if(reservations.has(requestId))return {reserved:false};
+   for(let slot=1;slot<=limit;slot++){
+    const key=subject+":"+day+":"+slot;
+    if(!slots.has(key)){slots.add(key);reservations.set(requestId,{subject,day,slot});return {reserved:true,slot}}
+   }
+   return {reserved:false};
+  },
+  async issue({grantId,requestId,subject}){
+   const r=reservations.get(requestId);
+   if(!r||r.subject!==subject||grants.has(grantId))return {issued:false};
+   grants.set(grantId,{requestId,subject,consumed:false});return {issued:true};
+  },
+  async consume({grantId,requestId,subject}){
+   const g=grants.get(grantId);
+   if(!g||g.consumed||g.requestId!==requestId||g.subject!==subject)return {consumed:false};
+   g.consumed=true;return {consumed:true};
+  }
+ };
+}
+export async function executeBoundedD1Qualification({plan,approved=false}={}){
  if(approved!==true||!plan||plan.mode!=="plan_only"||plan.writesEnabled!==false||plan.networkEnabled!==false||plan.paidVoiceEnabled!==false)throw Error("qualification_not_approved");
  // Revalidate every plan field: callers must not bypass the plan builder with a forged object.
  const checked=buildD1QualificationPlan({testPrincipal:plan.testPrincipal,day:plan.day,runId:plan.runId,attempts:plan.attempts,limit:plan.limit});
  if(!Array.isArray(plan.requests)||plan.requests.length!==checked.requests.length||plan.requests.some((id,i)=>id!==checked.requests[i]))throw Error("invalid_qualification_plan");
- if(!store||typeof store.reserveAtomic!=="function"||typeof store.issue!=="function"||typeof store.consume!=="function")throw Error("missing_store");
- // OFFLINE FAKE ONLY. This function is not an authorized live D1 runner.
- if(store.__offlineFakeQualificationStore!==true)throw Error("live_store_forbidden");
+ const store=createOfflineFakeStore();
  // No automatic retries. Only one bounded batch of reservation attempts.
  const results=await Promise.allSettled(checked.requests.map(requestId=>store.reserveAtomic({subject:checked.testPrincipal,day:checked.day,requestId,limit:3})));
  if(results.some(r=>r.status!=="fulfilled"))throw Error("ambiguous_reservation_stop");
