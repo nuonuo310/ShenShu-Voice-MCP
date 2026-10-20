@@ -13,11 +13,11 @@ export async function inspectD1QualificationReadOnly({plan,client}={}){
  const byName=new Map(tables.map(row=>[row.name,row.sql]));
  const reservations=byName.get("paid_voice_reservations"),grants=byName.get("paid_voice_grants");
  if(typeof reservations!=="string"||typeof grants!=="string"||
- !/request_id\\s+TEXT\\s+PRIMARY KEY/i.test(reservations)||
- !/UNIQUE\\s*\\(\\s*principal\\s*,\\s*day_utc\\s*,\\s*slot\\s*\\)/i.test(reservations)||
- !/grant_id\\s+TEXT\\s+PRIMARY KEY/i.test(grants)||
- !/request_id\\s+TEXT\\s+NOT NULL\\s+UNIQUE/i.test(grants)||
- !/FOREIGN KEY\\s*\\(\\s*request_id\\s*\\)/i.test(grants))throw Error("schema_gate_failed");
+ !/request_id\s+TEXT\s+PRIMARY KEY/i.test(reservations)||
+ !/UNIQUE\s*\(\s*principal\s*,\s*day_utc\s*,\s*slot\s*\)/i.test(reservations)||
+ !/grant_id\s+TEXT\s+PRIMARY KEY/i.test(grants)||
+ !/request_id\s+TEXT\s+NOT NULL\s+UNIQUE/i.test(grants)||
+ !/FOREIGN KEY\s*\(\s*request_id\s*\)/i.test(grants))throw Error("schema_gate_failed");
  const fk=await client.query("PRAGMA foreign_keys",[]);
  if(fk.length!==1||fk[0].foreign_keys!==1)throw Error("foreign_keys_disabled");
  const violations=await client.query("PRAGMA foreign_key_check",[]);
