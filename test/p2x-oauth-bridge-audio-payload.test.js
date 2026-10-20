@@ -11,6 +11,9 @@ test("OAuth resource enables audio inspection while public UI remains gated",asy
  const view=await c.readResource({uri:"ui://shenshu/private-fixture-bubble-v2.html"});
  const html=view.contents[0].text;
  assert.ok(html.includes('id="bridge-audio-probe"'));
+ assert.ok(html.includes('id="bridge-decode-probe"'));
+ assert.ok(html.includes('const bridgeDecodeProbe=$("bridge-decode-probe");'));
+ assert.ok(html.includes('OAuth 桥接 WAV：解码成功（未播放）'));
  assert.ok(html.includes('const isOAuthBubble=true;'));
  assert.ok(html.includes('name:"probe_oauth_bridge_audio_payload"'));
  const {readFile}=await import("node:fs/promises");
