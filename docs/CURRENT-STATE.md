@@ -128,6 +128,16 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - NEXT ONLY: independently verify tenant's public JWKS and design safe key rotation/fail-closed handling; obtain explicit approval before enabling even the non-billable diagnostic in Render. Then test ChatGPT login once, without replacing the public MOCK connection.
 - Do not touch Asteria-Call, original Voice Worker, or voice gallery.
 
+## P2N — Auth0 JWKS trust refresh/cache candidate (2026-10-20)
+
+- Added `src/auth0-jwks-cache.js` and `test/auth0-jwks-cache.test.js`. This is a standalone, unconnected, **NON-PRODUCTION** security component; production `server.js`, `/mcp` and `/paid-mcp` remain unchanged.
+- Uses pinned Auth0 public JWKS URL `https://dev-nwr87q0tnrbjeapr.us.auth0.com/.well-known/jwks.json`, refuses attacker-selected endpoints, non-RS256/signature keys, duplicate KIDs and private-key material.
+- Enforces 64 KiB streamed response bound, HTTPS-only pinned destination, 8s timeout by default, small TTL, deduplicated concurrent refresh, key rotation on successful refresh and **fail-closed on stale-refresh failure**. No grace use of stale keys.
+- CI at implementation/test commit `eac18f6ff377e2c421ae40149569db387761b228`: SUCCESS, all added offline tests passed. No real Auth0 JWKS retrieval was performed in this test, and no real token was used.
+- This code is **NOT wired** to either P2L diagnostic or P2M authenticated MCP. Such integration requires deliberate trust-boundary review, treatment of untrusted issuer metadata, rotation and timeouts, and actual Auth0 JWKS verification.
+- **Next exclusive gate:** independently read and validate real tenant public JWKS from a trusted route; verify real access-token issuance with audience and scope through the already-provisioned Auth0 SPA client, keeping all tools non-billable. Do not enable Render auth flags until explicitly authorized.
+- Call, Voice Worker, Voice Gallery, original MOCK MCP and paid MiniMax remain untouched.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
