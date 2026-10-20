@@ -28,6 +28,7 @@ export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=nul
         return verifier(request);
       };
     }
+    if (env?.NODE_ENV !== "test") return null;
     const json=env?.SHENSHU_AUTH_PUBLIC_JWKS_JSON;
     if(typeof json!=="string" || Buffer.byteLength(json,"utf8")>MAX_JWKS_BYTES) return null;
     const data=JSON.parse(json);
