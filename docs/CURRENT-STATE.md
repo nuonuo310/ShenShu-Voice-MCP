@@ -310,6 +310,13 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No secrets, Cloudflare IDs, verified principal, request/grant identifiers, or SQL payloads are recorded in this checkpoint.
 
 
+## P2X — OAuth MCP Apps iPhone host bridge PASS (2026-10-20)
+
+- User confirmed **native iPhone ChatGPT App**: tapped the OAuth UI `检查 OAuth 通信桥` button in the already-rendered chat and observed success; the same OAuth player also produced audible public HTTPS WAV tone. **iPhone bridge round trip PASS; public HTTPS WAV playback PASS.** No additional tool retry was requested.
+- These are two independent capabilities: a nonsecret bridge probe response and public test WAV playback. **Private audio bytes via the bridge have not been returned or played**. Do not mark authenticated private audio delivery PASS.
+- Desktop bridge success previously recorded; PR #28 CI #204 PASS, merged `7976fba`. Keep old transient render failure as a nonfatal observation, not proven network cause.
+- Next exclusive gate: isolate bounded, nonbillable audio bytes delivery through the host bridge in an OAuth-gated tool, then test whether iPhone can play those bytes under MCP Apps CSP without publishing private audio or introducing URL tokens. Do not enable MiniMax or paid quota.
+
 ## P2X — OAuth MCP Apps host bridge desktop PASS (2026-10-20)
 
 - User-confirmed **desktop ChatGPT web PASS**: existing OAuth test bubble rendered the `检查 OAuth 通信桥` button; one manual click returned `OAuth 通信桥：成功（无音频、无计费）`. This is a successful UI -> host `tools/call` -> OAuth tool -> UI result round trip with only nonsecret booleans.
