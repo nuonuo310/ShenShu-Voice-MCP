@@ -216,6 +216,18 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - **Next exclusive gate:** do NOT create a new database. Apply only migration 002 to the EXISTING D1 `shenshu-voice-budget-test` after explicit review/approval, then run real D1 concurrency/replay tests against the existing reservation table plus new grant table. No MiniMax call yet.
 - Existing Auth0 OAuth PASS, public MOCK `/mcp`, Asteria-Call, Voice Worker and Voice Gallery remain unchanged.
 
+## P2T — existing Cloudflare D1 migration 002 applied and live baseline recovered (2026-10-20)
+
+- User applied `db/d1/002_paid_voice_grants.sql` manually to the EXISTING Cloudflare D1 database `shenshu-voice-budget-test`; Cloudflare reported successful execution.
+- Live schema now includes:
+  - `paid_voice_reservations` with PK `request_id`, UNIQUE `principal/day_utc/slot`, slot CHECK 1..20;
+  - pre-existing index `paid_voice_reservations_by_owner_day(principal, day_utc)`;
+  - new `paid_voice_grants` with unique request_id, state issued/consumed and FK to reservations;
+  - new index `paid_voice_grants_principal_state(principal,state)`.
+- Existing real test rows show `test_owner` occupies slots 1,2,3 for `2026-10-20`, and probe principal occupies slots 1,2,3 for `2026-10-19`. This confirms the prior D1 quota path was actively exercised, not an empty database.
+- No existing reservation rows were modified or deleted. No MiniMax call occurred.
+- **Next exclusive gate:** run live D1 SQL probes for (a) limit=3 fourth reservation refusal, (b) one grant issue tied to an existing test reservation, (c) first consume succeeds, (d) replayed consume returns no row. If all pass, record D1 admission as live-tested before any MCP-to-D1 runtime wiring.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
