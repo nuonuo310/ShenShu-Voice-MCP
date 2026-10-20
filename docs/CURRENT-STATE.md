@@ -228,6 +228,21 @@ This file is the FIRST ENTRY for any assistant or coding agent resuming this pro
 - No existing reservation rows were modified or deleted. No MiniMax call occurred.
 - **Next exclusive gate:** run live D1 SQL probes for (a) limit=3 fourth reservation refusal, (b) one grant issue tied to an existing test reservation, (c) first consume succeeds, (d) replayed consume returns no row. If all pass, record D1 admission as live-tested before any MCP-to-D1 runtime wiring.
 
+## P2U — live Cloudflare D1 admission gate PASS (2026-10-20)
+
+- Live D1 database: `shenshu-voice-budget-test`.
+- Real production-like manual probes against existing test data all matched the intended fail-closed behavior:
+  1. Existing `test_owner` already occupied slots 1,2,3 for `2026-10-20`.
+  2. A fourth reservation candidate using the canonical first-free-slot SQL returned **no data**.
+  3. Follow-up count for request_id `test_nuo_004_should_deny` returned `0`, proving no hidden insert.
+  4. Grant `grant_test_nuo_003` for existing reservation `test_nuo_003` inserted successfully with state `issued`.
+  5. First conditional consume returned one row and changed state to `consumed`.
+  6. Replaying the exact same consume statement returned no row (Cloudflare UI reported successful statement execution but no RETURNING result), proving one-time consumption.
+- Therefore the live D1 gate has now demonstrated: **daily slot limit, request replay protection, grant issuance, one-time grant consumption / replay denial**.
+- No MiniMax call, no paid MCP tool, and no Call/Voice-Worker changes occurred.
+- PostgreSQL remains superseded historical candidate only.
+- **Next exclusive gate:** wire the already-PASS real OAuth principal to this D1 admission path in the authenticated MCP runtime, but expose only a NON-BILLABLE dry-run/admission diagnostic first. The diagnostic must prove a real authenticated principal can reserve/consume admission server-side without exposing principal/grant IDs and without calling MiniMax. Only after that should private audio delivery be tested.
+
 ## Current STOP: identity / paid admission gates (P2, NOT released)
 
 - Public Render `/mcp` remains **NO AUTH** and MOCK ONLY.
