@@ -75,6 +75,27 @@ try {
   assert.equal(hosted.result?.structuredContent?.record?.audioUrl,"https://shenshu-voice-mcp.onrender.com/test-tone.wav");
   console.log("MCP tools/list and inline + hosted audio tools/call PASS");
 
+  // New protected route is always closed, even when a bearer is supplied.
+  const meta=await fetch(base+"/.well-known/oauth-protected-resource/paid-mcp");
+  assert.equal(meta.status,200);
+  const doc=await meta.json();
+  assert.equal(doc.resource,"https://shenshu-voice-mcp.onrender.com/paid-mcp");
+  assert.deepEqual(doc.authorization_servers,["https://dev-nwr87q0tnrbjeapr.us.auth0.com/"]);
+  assert.deepEqual(doc.scopes_supported,["voice:speak"]);
+  const noAuth=await fetch(base+"/paid-mcp",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});
+  assert.equal(noAuth.status,401);
+  assert.match(noAuth.headers.get("www-authenticate")||"",/resource_metadata=/);
+  const fakeAuth=await fetch(base+"/paid-mcp",{
+    method:"POST",headers:{authorization:"Bearer forged-token","content-type":"application/json"},body:"{}"
+  });
+  assert.equal(fakeAuth.status,401);
+  const getPaid=await fetch(base+"/paid-mcp");
+  assert.equal(getPaid.status,401);
+  const list=await rpc(5,"tools/list");
+  assert.ok(!list.result?.tools?.some(x=>x.name==="speak_shenshu"),"paid tool exposed");
+  console.log("Protected MCP metadata and fail-closed paid entry PASS");
+
+
 } finally {
   child.kill("SIGTERM");
 }
