@@ -9,6 +9,7 @@
 import {createProtectedResourceMetadata, unauthorizedChallenge} from "./oauth-resource-metadata.js";
 import {createConfiguredPaidDiagnostic, evaluatePaidDiagnostic} from "./configured-paid-diagnostic.js";
 import {handleStagingAuthenticatedMcp} from "./staging-authenticated-mcp.js";
+import {createAuth0JwksCache} from "./auth0-jwks-cache.js";
 
 export const PAID_PATH = "/paid-mcp";
 export const RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource/paid-mcp";
@@ -22,6 +23,7 @@ const metadata = createProtectedResourceMetadata({
   scopes: ["voice:speak"],
 });
 const challenge = unauthorizedChallenge({resourceMetadataUrl:RESOURCE_METADATA_URL});
+const runtimeJwksCache=createAuth0JwksCache();
 
 function reply(res, status, headers, body) {
   res.writeHead(status, headers);
@@ -48,7 +50,8 @@ export async function handleProtectedResourceShell(req, res, pathname, {env = pr
     if (env.SHENSHU_AUTH_MCP_ENABLED === "1") {
       await handleStagingAuthenticatedMcp(req,res,{
         env,issuer:AUTH0_ISSUER,audience:PAID_RESOURCE,
-        resourceMetadataUrl:RESOURCE_METADATA_URL
+        resourceMetadataUrl:RESOURCE_METADATA_URL,
+        jwksCache:runtimeJwksCache
       });
       return true;
     }
