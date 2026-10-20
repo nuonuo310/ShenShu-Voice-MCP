@@ -12,6 +12,8 @@ test("OAuth resource enables audio inspection while public UI remains gated",asy
  const html=view.contents[0].text;
  assert.ok(html.includes('id="bridge-audio-probe"'));
  assert.ok(html.includes('id="bridge-decode-probe"'));
+ assert.ok(html.includes('id="oauth-ui-build"'));
+ assert.ok(html.includes('p2x-decode-v2-20261020'));
  assert.ok(html.includes('const bridgeDecodeProbe=$("bridge-decode-probe");'));
  assert.ok(html.includes('OAuth 桥接 WAV：解码成功（未播放）'));
  assert.ok(html.includes('const isOAuthBubble=true;'));
