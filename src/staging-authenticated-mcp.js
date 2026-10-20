@@ -6,9 +6,9 @@
  * Each Streamable HTTP request is separately signature/scope/audience checked;
  * no unsigned principal from tools or headers (other than bearer token) is used.
  */
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { z } from "zod";
+import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createVerifiedIdentityResolver } from "./verified-identity.js";
 import { createAuth0JwksCache } from "./auth0-jwks-cache.js";
 
@@ -40,20 +40,40 @@ export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=nul
 }
 
 export function makeStagingMcpServer() {
-  const server=new McpServer({name:"shenshu-identity-stage",version:"0.1.0"});
-  server.registerTool("verify_shenshu_login",{
+  const server=new Server(
+    {name:"shenshu-identity-stage",version:"0.1.0"},
+    {capabilities:{tools:{}}}
+  );
+  const tool={
+    name:"verify_shenshu_login",
     title:"Verify ShenShu OAuth login",
     description:"Non-billable OAuth login handshake. Confirms authenticated access only. Generates no voice.",
-    inputSchema:{},
+    inputSchema:{type:"object",properties:{},additionalProperties:false},
     outputSchema:{
-      authenticated:z.boolean(),
-      paid_voice_enabled:z.boolean()
+      type:"object",
+      properties:{
+        authenticated:{type:"boolean"},
+        paid_voice_enabled:{type:"boolean"}
+      },
+      required:["authenticated","paid_voice_enabled"],
+      additionalProperties:false
     },
-    securitySchemes:[{type:"oauth2",scopes:["voice:speak"]}]
-  },async()=>({
-    content:[{type:"text",text:"身份已验证。沈述付费语音尚未开放。"}],
-    structuredContent:{authenticated:true,paid_voice_enabled:false}
-  }));
+    securitySchemes:[{type:"oauth2",scopes:["voice:speak"]}],
+    _meta:{securitySchemes:[{type:"oauth2",scopes:["voice:speak"]}]}
+  };
+  server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:[tool]}));
+  server.setRequestHandler(CallToolRequestSchema,async request=>{
+    if(request.params.name!==tool.name) throw new Error("unknown_tool");
+    const args=request.params.arguments;
+    if(args!==undefined && (
+      args===null || typeof args!=="object" || Array.isArray(args) ||
+      Object.keys(args).length!==0
+    )) throw new Error("invalid_arguments");
+    return {
+      content:[{type:"text",text:"身份已验证。沈述付费语音尚未开放。"}],
+      structuredContent:{authenticated:true,paid_voice_enabled:false}
+    };
+  });
   return server;
 }
 
