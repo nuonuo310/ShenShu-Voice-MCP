@@ -9,7 +9,7 @@ export async function inspectAuth0Issuer({
   domain, fetchImpl=fetch, timeoutMs=8000, maxBytes=DEFAULT_MAX_BYTES
 }) {
   if(typeof domain!=="string" ||
-    !/^[a-z0-9-]{3,64}\\.(?:us|eu|au|jp)\\.auth0\\.com$/.test(domain) ||
+    !/^[a-z0-9-]{3,64}\.(?:us|eu|au|jp)\.auth0\.com$/.test(domain) ||
     !Number.isSafeInteger(timeoutMs)||timeoutMs<100||timeoutMs>15000||
     !Number.isSafeInteger(maxBytes)||maxBytes<1024||maxBytes>DEFAULT_MAX_BYTES)
     throw Error("invalid_auth0_domain");
