@@ -23,6 +23,10 @@ const privateFixtureUi=readFileSync(new URL("../ui/mcp-bubble.html",import.meta.
 // Server-side exact resource specialization, not an iframe URL heuristic.
 const oauthBridgeUi=privateFixtureUi.replace('const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");','const isOAuthBubble=true;');
 if(oauthBridgeUi===privateFixtureUi)throw Error("oauth_bridge_ui_specialization_missing");
+// Stable nonsecret UI diagnostic marker, derived from the exact HTML served by this process.
+const OAUTH_UI_BUILD_MARKER="p2x-decode-v2-20261020";
+const oauthUiWithMarker=oauthBridgeUi.replace("</body>",'<p id="oauth-ui-build" style="font-size:11px;opacity:.55">UI '+OAUTH_UI_BUILD_MARKER+'</p></body>');
+if(oauthUiWithMarker===oauthBridgeUi)throw Error("oauth_ui_marker_injection_failed");
 
 export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=null}={}) {
   if(env?.SHENSHU_AUTH_MCP_ENABLED!=="1") return null;
@@ -128,7 +132,7 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
   }]:[]}));
   server.setRequestHandler(ReadResourceRequestSchema,async request=>{
     if(!privateFixtureEnabled||request.params.uri!==PRIVATE_FIXTURE_UI_URI)throw Error("unknown_resource");
-    return {contents:[{uri:PRIVATE_FIXTURE_UI_URI,mimeType:RESOURCE_MIME_TYPE,text:oauthBridgeUi,
+    return {contents:[{uri:PRIVATE_FIXTURE_UI_URI,mimeType:RESOURCE_MIME_TYPE,text:oauthUiWithMarker,
       _meta:{ui:{prefersBorder:false,csp:{connectDomains:[],resourceDomains:["https://shenshu-voice-mcp.onrender.com"]}}}}]};
   });
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
