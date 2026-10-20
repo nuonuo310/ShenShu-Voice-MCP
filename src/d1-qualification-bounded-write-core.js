@@ -10,7 +10,7 @@ export async function runBoundedQualificationCore({plan,store}={}){
  const accepted=[];const slots=new Set();
  for(let i=0;i<settled.length;i++){
   const r=settled[i].value;
-  if(r?.reserved===false)continue;
+  if(r?.reserved===false){if(r.slot!==undefined)throw Error("reservation_invariant_stop");continue;}
   if(r?.reserved!==true||!Number.isSafeInteger(r.slot)||r.slot<1||r.slot>3||slots.has(r.slot))throw Error("reservation_invariant_stop");
   slots.add(r.slot);accepted.push(p.requests[i]);
  }
