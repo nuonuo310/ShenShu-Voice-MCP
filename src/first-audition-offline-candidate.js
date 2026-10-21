@@ -2,14 +2,20 @@
  * Offline-only rehearsal for exactly one future MiniMax audition.
  *
  * This module is intentionally NOT registered on an MCP route. It composes the
- * already-reviewed pieces in this order: verified identity -> one-time
- * operator consent -> one-slot durable admission -> one fake upstream attempt
+ * already-reviewed pieces in this order: verified identity -> trusted one-use
+ * consent capability -> one-slot durable admission -> one fake upstream attempt
  * -> WAV validation -> the existing live-voice record shape.
  *
  * The fetch function is injected and must not be the runtime's real fetch.
- * No secrets, principal values, consent identifiers or audio are logged.
+ * The consent callback may issue a short-lived capability, but only the
+ * server-side capability store can consume it. No secrets, principal values,
+ * consent identifiers or audio are logged.
  */
 import { randomUUID } from "node:crypto";
+import {
+  AUDITION_CONSENT_ACTION,
+  auditionTextDigest,
+} from "./audition-consent-capability.js";
 import { checkText } from "./contract.js";
 import { createLiveVoice } from "./live-voice.js";
 import { DEFAULT_MODEL_ID, synthesizeMiniMax } from "./minimax-adapter.js";
@@ -22,7 +28,8 @@ export const FIRST_AUDITION_DAILY_LIMIT = 1;
 
 export function createOfflineFirstAuditionCandidate({
   resolveVerifiedPrincipal,
-  claimOperatorConsent,
+  requestOperatorConsent,
+  consentStore,
   store,
   apiKey,
   voiceId,
@@ -34,7 +41,9 @@ export function createOfflineFirstAuditionCandidate({
 } = {}) {
   if (
     typeof resolveVerifiedPrincipal !== "function" ||
-    typeof claimOperatorConsent !== "function" ||
+    typeof requestOperatorConsent !== "function" ||
+    !consentStore ||
+    typeof consentStore.consume !== "function" ||
     !store ||
     typeof store.reserveAtomic !== "function" ||
     typeof store.issue !== "function" ||
@@ -57,6 +66,8 @@ export function createOfflineFirstAuditionCandidate({
 
   return async function rehearseFirstAudition({ trustedRequest, text } = {}) {
     const safeText = checkText(text);
+    const textBytes = Buffer.byteLength(safeText, "utf8");
+    const textDigest = auditionTextDigest(safeText);
     const identity = await resolveVerifiedPrincipal(trustedRequest);
     if (
       !identity ||
@@ -66,6 +77,9 @@ export function createOfflineFirstAuditionCandidate({
       throw new Error("not_authorized");
     }
 
+    const requestId = makeRequestId();
+    if (!IDENT.test(requestId ?? "")) throw new Error("invalid_request_id");
+
     const admission = createServerOwnedVoiceAdmission({
       verifiedSubject: identity.subject,
       store,
@@ -74,25 +88,48 @@ export function createOfflineFirstAuditionCandidate({
       maximumDailyCalls: FIRST_AUDITION_DAILY_LIMIT,
     });
 
-    const authorize = async ({ action, textBytes, requestId }) => {
-      let consent;
+    const authorize = async ({ action, textBytes: authorizedBytes, requestId: authorizedRequestId }) => {
+      if (action !== AUDITION_CONSENT_ACTION ||
+          authorizedBytes !== textBytes ||
+          authorizedRequestId !== requestId) {
+        throw new Error("not_authorized");
+      }
+
+      let capability;
       try {
-        consent = await claimOperatorConsent({
+        capability = await requestOperatorConsent({
           principal: identity.subject,
           action,
           textBytes,
+          textDigest,
           requestId,
         });
       } catch {
         throw new Error("consent_denied");
       }
-      if (
-        consent?.allowed !== true ||
-        consent?.oneTime !== true ||
-        consent?.principal !== identity.subject
-      ) {
+      if (typeof capability !== "string" || capability.length === 0) {
         throw new Error("consent_denied");
       }
+
+      let consent;
+      try {
+        consent = await consentStore.consume({
+          capability,
+          principal: identity.subject,
+          action,
+          textBytes,
+          textDigest,
+          requestId,
+        });
+      } catch {
+        throw new Error("consent_denied");
+      }
+      if (consent?.consumed !== true ||
+          consent.principal !== identity.subject ||
+          consent.action !== action) {
+        throw new Error("consent_denied");
+      }
+
       return admission({ action, textBytes, requestId });
     };
 
@@ -105,9 +142,6 @@ export function createOfflineFirstAuditionCandidate({
         fetchImpl,
         timeoutMs,
       });
-
-    const requestId = makeRequestId();
-    if (!IDENT.test(requestId ?? "")) throw new Error("invalid_request_id");
 
     return createLiveVoice({
       text: safeText,
