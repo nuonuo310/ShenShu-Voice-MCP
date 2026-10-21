@@ -32,7 +32,9 @@ RETURNING request_id, slot`.trim();
 const ISSUE=`
 INSERT OR IGNORE INTO paid_voice_grants
   (grant_id, request_id, principal, state)
-VALUES (?1, ?2, ?3, 'issued')
+SELECT ?1, r.request_id, r.principal, 'issued'
+FROM paid_voice_reservations AS r
+WHERE r.request_id = ?2 AND r.principal = ?3
 RETURNING grant_id`.trim();
 
 const CONSUME=`
