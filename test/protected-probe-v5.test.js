@@ -250,10 +250,21 @@ test("missing and invalid OAuth fail before any generated fixture is emitted", a
     assert.equal(wrongScope.status, 403);
     assert.doesNotMatch(wrongScope.text, /host_delivery_fake_generated_001|audioBase64|structuredContent/);
 
+    const wrongAudience = await gate.rpc(
+      callBody(4),
+      accessToken({ audience: "https://offline.invalid/other-mcp" }),
+    );
+    assert.equal(wrongAudience.status, 401);
+    assert.doesNotMatch(wrongAudience.text, /host_delivery_fake_generated_001|audioBase64|structuredContent/);
+
+    const expired = await gate.rpc(callBody(5), accessToken({ expiry: -1 }));
+    assert.equal(expired.status, 401);
+    assert.doesNotMatch(expired.text, /host_delivery_fake_generated_001|audioBase64|structuredContent/);
+
     const valid = accessToken();
     const init = await gate.rpc({
       jsonrpc: "2.0",
-      id: 4,
+      id: 6,
       method: "initialize",
       params: {
         protocolVersion: "2025-06-18",
@@ -264,7 +275,7 @@ test("missing and invalid OAuth fail before any generated fixture is emitted", a
     assert.equal(init.status, 200);
     const listed = await gate.rpc({
       jsonrpc: "2.0",
-      id: 5,
+      id: 7,
       method: "tools/list",
       params: {},
     }, valid);
@@ -277,7 +288,7 @@ test("missing and invalid OAuth fail before any generated fixture is emitted", a
       { type: "oauth2", scopes: ["voice:speak"] },
     ]);
     assert.deepEqual(descriptor._meta.ui.visibility, ["app"]);
-    const invoked = await gate.rpc(callBody(5), valid);
+    const invoked = await gate.rpc(callBody(8), valid);
     assert.equal(invoked.status, 200);
     assert.equal(
       invoked.json.result.structuredContent.record.id,
@@ -473,6 +484,36 @@ test("OAuth-only UI button posts tools/call and reaches gesture-gated Web Audio"
   assert.equal(harness.audio.playCalls, 0);
   assert.match(harness.elements.status.textContent, /非计费测试/);
   assert.match(harness.elements.status.textContent, /MiniMax/);
+});
+
+test("OAuth generated button rejects inconsistent results without a success label", async () => {
+  const surface = await readOAuthSurface();
+  const harness = makeUiHarness(
+    surface.html,
+    "https://host.invalid/ui/private-fixture-bubble-v2.html",
+  );
+  const invalid = {
+    ...surface.generated,
+    structuredContent: {
+      record: {
+        ...surface.generated.structuredContent.record,
+        providerInvoked: true,
+      },
+    },
+  };
+
+  const clicked = harness.click("bridge-generated-probe");
+  const call = harness.findToolCall(PROPOSED_GENERATED_HOST_TOOL_NAME);
+  assert.ok(call);
+  harness.resolveRpc(call.id, invalid);
+  await clicked;
+
+  assert.equal(harness.contexts.length, 0);
+  assert.equal(harness.audio.src, "");
+  assert.equal(harness.audio.loadCalls, 0);
+  assert.match(harness.elements["bridge-generated-result"].textContent, /交付失败/);
+  assert.doesNotMatch(harness.elements["bridge-generated-result"].textContent, /已交付/);
+  assert.doesNotMatch(harness.elements.status.textContent, /非计费测试/);
 });
 
 test("public UI hides and inertly rejects the protected generated button", async () => {
