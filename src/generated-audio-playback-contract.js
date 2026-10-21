@@ -12,7 +12,7 @@ export const MAX_GENERATED_AUDIO_BASE64_LENGTH = 3_000_000;
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
-export function prepareGeneratedAudioPlayback(record) {
+function validateGeneratedRecord(record) {
   if (!record || record.source !== GENERATED_AUDIO_SOURCE || record.generated !== true) {
     throw new Error("unsupported_audio_result");
   }
@@ -39,12 +39,35 @@ export function prepareGeneratedAudioPlayback(record) {
   try { metadata = validateWav(audio); }
   catch { throw new Error("invalid_generated_audio"); }
 
+  return { audio, audioBase64, metadata };
+}
+
+export function prepareGeneratedAudioPlayback(record) {
+  const { audio, audioBase64, metadata } = validateGeneratedRecord(record);
+
   return Object.freeze({
     source: GENERATED_AUDIO_SOURCE,
     generated: true,
     audioMimeType: "audio/wav",
     audioBase64,
     dataUrl: "data:audio/wav;base64," + audioBase64,
+    byteLength: audio.length,
+    durationSeconds: metadata.durationSeconds,
+  });
+}
+
+/**
+ * Host-delivered generated audio prepared for an explicit user-gesture Web
+ * Audio path. It deliberately exposes no data URL or remote URL.
+ */
+export function prepareGeneratedWebAudioBridge(record) {
+  const { audio, audioBase64, metadata } = validateGeneratedRecord(record);
+  return Object.freeze({
+    source: GENERATED_AUDIO_SOURCE,
+    generated: true,
+    audioMimeType: "audio/wav",
+    audioBase64,
+    audioBytes: Uint8Array.from(audio),
     byteLength: audio.length,
     durationSeconds: metadata.durationSeconds,
   });
