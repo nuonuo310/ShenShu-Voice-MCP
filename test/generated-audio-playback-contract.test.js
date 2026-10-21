@@ -7,6 +7,7 @@ import {
   MAX_GENERATED_AUDIO_BASE64_LENGTH,
   decodeGeneratedAudioForPlayback,
   prepareGeneratedAudioPlayback,
+  prepareGeneratedWebAudioBridge,
 } from "../src/generated-audio-playback-contract.js";
 import { makeInlineToneFixture } from "../src/inline-fixture.js";
 
@@ -31,6 +32,20 @@ test("a generated minimax record becomes a bounded inline WAV without a public U
   assert.equal(prepared.dataUrl, "data:audio/wav;base64," + fixture.audioBase64);
   assert.equal(prepared.byteLength, 22_444);
   assert.equal(prepared.durationSeconds, 0.7);
+  assert.equal("audioUrl" in prepared, false);
+});
+
+test("the v3 bridge payload exposes no data URI or remote URL", () => {
+  const prepared = prepareGeneratedWebAudioBridge(record());
+
+  assert.equal(prepared.source, "minimax");
+  assert.equal(prepared.generated, true);
+  assert.equal(prepared.audioMimeType, "audio/wav");
+  assert.equal(prepared.byteLength, 22_444);
+  assert.equal(prepared.durationSeconds, 0.7);
+  assert.equal(prepared.audioBytes.length, 22_444);
+  assert.deepEqual(Buffer.from(prepared.audioBytes), Buffer.from(fixture.audioBase64, "base64"));
+  assert.equal("dataUrl" in prepared, false);
   assert.equal("audioUrl" in prepared, false);
 });
 
@@ -129,23 +144,33 @@ test("decode failures, invalid decoded duration and stale results fail closed", 
   );
 });
 
-test("the shared player retains old sources and only adds an inline generated branch", async () => {
+test("the shared player routes generated records to gesture-gated Web Audio and retains old sources", async () => {
   const ui = await readFile(new URL("../ui/mcp-bubble.html", import.meta.url), "utf8");
+  const generatedBranch = ui.match(/if\(next\.source==="minimax"\)\{([\s\S]*?)return;\s*\}/)?.[1];
+  assert.ok(generatedBranch);
+  assert.match(generatedBranch, /validateGeneratedBridgeRecord\(next\)/);
+  assert.match(generatedBranch, /generatedBridge=\{generation/);
+  assert.doesNotMatch(generatedBranch, /inlineAudioUrl|audio\.src|data:audio/);
 
-  assert.match(
-    ui,
-    /next\.source==="minimax"&&next\.generated===true&&next\.audioBase64&&next\.audioUrl===undefined/,
-  );
   assert.match(ui, /next\.source==="private-fixture"/);
   assert.match(ui, /next\.source==="tone-fixture"/);
   assert.match(ui, /next\.source==="hosted-tone"/);
   assert.match(ui, /next\.source==="fixture"/);
   assert.match(ui, /data:audio\/wav;base64,/);
-  assert.match(ui, /next\.audioBase64\.length>3_000_000/);
+  assert.match(ui, /base64\.length>3_000_000/);
   assert.match(ui, /raw\.length>2\*1024\*1024/);
-  assert.match(ui, /loadPhase=next\.source==="private-fixture"\?"private-inline":next\.source==="minimax"\?"generated-inline":"other-source"/);
+  assert.match(ui, /loadPhase=next\.source==="private-fixture"\?"private-inline":"other-source"/);
+  assert.doesNotMatch(ui, /generated-inline/);
   assert.doesNotMatch(ui, /next\.source==="minimax"[\s\S]{0,240}?target=next\.audioUrl/);
   assert.doesNotMatch(ui, /api\.minimaxi\.com|MINIMAX_API_KEY|\bfetch\s*\(/);
+  assert.doesNotMatch(ui, /else if\(next\.source==="minimax"/);
+
+  assert.match(ui, /async function toggleGeneratedBridgePlayback\(\)/);
+  assert.match(ui, /window\.AudioContext\|\|window\.webkitAudioContext/);
+  assert.match(ui, /context\.decodeAudioData\(copy\.buffer\)/);
+  assert.match(ui, /generatedPlayback\?\.starting\)return/);
+  assert.match(ui, /generatedPlayback\?\.playing\)\{/);
+  assert.match(ui, /const unlocked=context\.resume\(\)/);
 
   assert.match(ui, /const generation=\+\+mediaLoadGeneration/);
   assert.match(ui, /audio\.dataset\.loadGeneration=String\(generation\)/);

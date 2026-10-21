@@ -58,6 +58,7 @@ const $=id=>document.getElementById(id);
 const wave=$("wave"),audio=$("audio"),play=$("play");
 wave.innerHTML=heights.map(h=>`<i style="--h:${h}px"></i>`).join("");
 let record=null,frame=0,rpcId=0,loadPhase="idle",mediaLoadGeneration=0;
+let generatedBridge=null,generatedPlayback=null,generatedPlaybackToken=0;
 const pending=new Map();
 // Read-only, nonsecret runtime media capability report. Does not play audio or fetch URLs.
 function reportMediaCapability(){
@@ -71,12 +72,13 @@ reportMediaCapability();
 
 const fmt=s=>Number.isFinite(s)?`${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,"0")}`:"0:00";
 function paint(){
-  const d=Number.isFinite(audio.duration)?audio.duration:record?.durationSeconds||0;
+  const d=Number.isFinite(audio.duration)?audio.duration:generatedBridge?.durationSeconds??record?.durationSeconds??0;
   const p=d?Math.min(1,audio.currentTime/d):0;
   $("duration").textContent=fmt(d);
   wave.querySelectorAll("i").forEach((bar,i)=>bar.classList.toggle("heard",(i+.5)/heights.length<=p));
-  play.classList.toggle("playing",!audio.paused);
-  play.setAttribute("aria-label",audio.paused?"播放语音":"暂停语音");
+  const generatedPlaying=generatedPlayback?.playing===true;
+  play.classList.toggle("playing",generatedPlaying||!audio.paused);
+  play.setAttribute("aria-label",generatedPlaying||!audio.paused?"暂停语音":"播放语音");
   if(!audio.paused)frame=requestAnimationFrame(paint);
 }
 function inlineAudioUrl(next){
@@ -90,11 +92,145 @@ function inlineAudioUrl(next){
   for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
   return "data:audio/wav;base64," + next.audioBase64;
 }
+function wavAscii(bytes,start,end){
+  let value="";
+  for(let i=start;i<end;i++)value+=String.fromCharCode(bytes[i]);
+  return value;
+}
+function wavU16(bytes,pos){return bytes[pos]|bytes[pos+1]<<8}
+function wavU32(bytes,pos){
+  return (bytes[pos]|bytes[pos+1]<<8|bytes[pos+2]<<16|bytes[pos+3]<<24)>>>0;
+}
+function validateGeneratedBridgeRecord(next){
+  if(next?.source!=="minimax"||next?.generated!==true||next?.audioUrl!==undefined||
+     next?.audioMimeType!=="audio/wav")throw Error("invalid_generated_record");
+  const base64=next.audioBase64;
+  if(typeof base64!=="string"||base64.length<100||base64.length>3_000_000||
+     base64.length%4!==0||!/^[A-Za-z0-9+/]+={0,2}$/.test(base64))
+    throw Error("invalid_generated_record");
+  let raw;
+  try{raw=atob(base64)}catch{throw Error("invalid_generated_record")}
+  if(raw.length<44||raw.length>2*1024*1024||btoa(raw)!==base64)
+    throw Error("invalid_generated_record");
+  const bytes=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+  if(wavAscii(bytes,0,4)!=="RIFF"||wavAscii(bytes,8,12)!=="WAVE"||
+     wavU32(bytes,4)+8!==bytes.length)throw Error("invalid_generated_record");
+  let pos=12,fmtOK=false,dataLength=null;
+  while(pos+8<=bytes.length){
+    const kind=wavAscii(bytes,pos,pos+4);
+    const size=wavU32(bytes,pos+4);
+    if(pos+8+size>bytes.length)throw Error("invalid_generated_record");
+    if(kind==="fmt "){
+      if(size<16||fmtOK)throw Error("invalid_generated_record");
+      const p=pos+8;
+      fmtOK=wavU16(bytes,p)===1&&wavU16(bytes,p+2)===1&&wavU32(bytes,p+4)===16000&&
+        wavU32(bytes,p+8)===32000&&wavU16(bytes,p+12)===2&&wavU16(bytes,p+14)===16;
+    }
+    if(kind==="data"){
+      if(dataLength!==null)throw Error("invalid_generated_record");
+      dataLength=size;
+    }
+    pos+=8+size+(size%2);
+  }
+  if(!fmtOK||dataLength===null||pos!==bytes.length||dataLength%2)
+    throw Error("invalid_generated_record");
+  const durationSeconds=dataLength/32000;
+  if(durationSeconds<0.2||durationSeconds>60)throw Error("invalid_generated_record");
+  return {bytes,durationSeconds};
+}
+function disposeGeneratedPlayback(){
+  const playback=generatedPlayback;
+  generatedPlayback=null;
+  generatedPlaybackToken++;
+  if(!playback)return;
+  if(playback.source){
+    playback.source.onended=null;
+    try{playback.source.stop()}catch{}
+    try{playback.source.disconnect()}catch{}
+  }
+  if(playback.context){
+    try{const closed=playback.context.close();if(closed?.catch)closed.catch(()=>{})}catch{}
+  }
+}
+function generatedPlaybackErrorMessage(error){
+  const kind=error?.message;
+  if(kind==="stale_generated_audio")return "已忽略过期的生成音频结果。";
+  if(kind==="audio_context_unavailable")return "Web Audio 不可用，未播放生成音频。";
+  if(kind==="audio_decode_failed")return "生成音频 Web Audio 解码失败，未播放。";
+  if(kind==="invalid_decoded_audio")return "生成音频解码时长不符合边界，未播放。";
+  return "生成音频 Web Audio 播放失败，未播放。";
+}
+async function toggleGeneratedBridgePlayback(){
+  if(!generatedBridge||record?.source!=="minimax")return;
+  if(generatedPlayback?.starting)return;
+  if(generatedPlayback?.playing){
+    disposeGeneratedPlayback();
+    $("status").textContent="已停止生成音频播放。";
+    paint();
+    return;
+  }
+  const bridge=generatedBridge;
+  const generation=bridge.generation;
+  const token=++generatedPlaybackToken;
+  let context=null;
+  try{
+    const Context=window.AudioContext||window.webkitAudioContext;
+    if(typeof Context!=="function")throw Error("audio_context_unavailable");
+    context=new Context();
+    const unlocked=context.resume();
+    generatedPlayback={token,generation,context,source:null,starting:true,playing:false};
+    play.disabled=true;
+    $("status").textContent="正在解码宿主桥交付的生成音频…";
+    await unlocked;
+    if(token!==generatedPlaybackToken||generation!==mediaLoadGeneration||generatedBridge!==bridge)
+      throw Error("stale_generated_audio");
+    const copy=new Uint8Array(bridge.bytes.length);
+    copy.set(bridge.bytes);
+    let decoded;
+    try{decoded=await context.decodeAudioData(copy.buffer)}
+    catch{throw Error("audio_decode_failed")}
+    if(token!==generatedPlaybackToken||generation!==mediaLoadGeneration||generatedBridge!==bridge)
+      throw Error("stale_generated_audio");
+    if(!decoded||!Number.isFinite(decoded.duration)||decoded.duration<0.2||decoded.duration>60)
+      throw Error("invalid_decoded_audio");
+    const source=context.createBufferSource();
+    source.buffer=decoded;
+    source.connect(context.destination);
+    const active={token,generation,context,source,starting:false,playing:true,duration:decoded.duration};
+    generatedPlayback=active;
+    source.onended=()=>{
+      if(generatedPlayback!==active)return;
+      generatedPlayback=null;
+      generatedPlaybackToken++;
+      try{source.disconnect()}catch{}
+      try{const closed=context.close();if(closed?.catch)closed.catch(()=>{})}catch{}
+      play.disabled=false;
+      $("status").textContent="生成音频播放结束（非计费；真实设备播放仍待人工验证）。";
+      paint();
+    };
+    source.start();
+    play.disabled=false;
+    $("status").textContent="正在播放宿主桥交付的生成音频（Web Audio，非计费）。";
+    paint();
+  }catch(error){
+    if(token!==generatedPlaybackToken)return;
+    if(generatedPlayback)disposeGeneratedPlayback();
+    else if(context){
+      try{const closed=context.close();if(closed?.catch)closed.catch(()=>{})}catch{}
+    }
+    play.disabled=false;
+    $("status").textContent=generatedPlaybackErrorMessage(error);
+    paint();
+  }
+}
 function applyResponse(response){
   const next=response?.structuredContent?.record;
   if(!next)return;
   audio.pause();
   const generation=++mediaLoadGeneration;
+  disposeGeneratedPlayback();
+  generatedBridge=null;
   loadPhase="reset";
   audio.removeAttribute("src");
   // Do not call load() on an empty source; avoid confusing reset with media load failure.
@@ -103,15 +239,22 @@ function applyResponse(response){
   $("text").textContent=typeof next.text==="string"?next.text:"";
   try{
     let target;
+    if(next.source==="minimax"){
+      const bridge=validateGeneratedBridgeRecord(next);
+      record=next;
+      generatedBridge={generation,bytes:bridge.bytes,durationSeconds:bridge.durationSeconds};
+      loadPhase="generated-bridge-ready";
+      $("status").textContent="生成音频已由宿主桥交付；请点击播放（Web Audio，非计费）。";
+      play.disabled=false;
+      paint();
+      return;
+    }
     if(next.source==="private-fixture"&&next.generated===false&&next.audioBase64&&next.audioUrl===undefined){
       target=inlineAudioUrl(next);
       $("status").textContent="授权测试音频（不调用 MiniMax）";
     }else if(next.source==="tone-fixture"&&next.generated===false&&next.audioBase64){
       target=inlineAudioUrl(next);
       $("status").textContent="离线提示音测试（并非沈述语音，不扣积分）";
-    }else if(next.source==="minimax"&&next.generated===true&&next.audioBase64&&next.audioUrl===undefined){
-      target=inlineAudioUrl(next);
-      $("status").textContent="沈述语音已生成（离线交付契约；真实设备播放尚未验证）";
     }else if(next.source==="hosted-tone"&&next.generated===false&&
        next.audioUrl==="https://shenshu-voice-mcp.onrender.com/test-tone.wav"){
       target=next.audioUrl;
@@ -126,7 +269,7 @@ function applyResponse(response){
     record=next;
     audio.dataset.loadGeneration=String(generation);
     audio.src=target;
-    loadPhase=next.source==="private-fixture"?"private-inline":next.source==="minimax"?"generated-inline":"other-source";
+    loadPhase=next.source==="private-fixture"?"private-inline":"other-source";
     audio.load();
     play.disabled=false;
   }catch{
@@ -248,6 +391,10 @@ bridgePlayProbe.addEventListener("click",async()=>{
   }finally{bridgePlayProbe.disabled=false;}
 });
 play.addEventListener("click",async()=>{
+  if(record?.source==="minimax"){
+    await toggleGeneratedBridgePlayback();
+    return;
+  }
   try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.source==="minimax"?"沈述语音（离线交付契约；真实设备播放尚未验证）":record?.source==="private-fixture"?"授权测试音频（不调用 MiniMax）":record?.source==="tone-fixture"?"离线提示音测试（非沈述声音）":record?.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":"联调试听 · 固定英文样本（未调用 MiniMax）"}
   catch(error){
     const kind=typeof error?.name==="string"?error.name:"UnknownError";
