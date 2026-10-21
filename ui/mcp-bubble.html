@@ -104,6 +104,9 @@ function wavU32(bytes,pos){
 function validateGeneratedBridgeRecord(next){
   if(next?.source!=="minimax"||next?.generated!==true||next?.audioUrl!==undefined||
      next?.audioMimeType!=="audio/wav")throw Error("invalid_generated_record");
+  if(next.hostDeliveryTest!==undefined&&
+     (next.hostDeliveryTest!==true||next.providerInvoked!==false||next.billable!==false))
+    throw Error("invalid_generated_record");
   const base64=next.audioBase64;
   if(typeof base64!=="string"||base64.length<100||base64.length>3_000_000||
      base64.length%4!==0||!/^[A-Za-z0-9+/]+={0,2}$/.test(base64))
@@ -181,7 +184,7 @@ async function toggleGeneratedBridgePlayback(){
     const unlocked=context.resume();
     generatedPlayback={token,generation,context,source:null,starting:true,playing:false};
     play.disabled=true;
-    $("status").textContent="正在解码宿主桥交付的生成音频…";
+    $("status").textContent=record?.hostDeliveryTest===true?"正在解码非计费测试生成 WAV（未调用 MiniMax）…":"正在解码宿主桥交付的生成音频…";
     await unlocked;
     if(token!==generatedPlaybackToken||generation!==mediaLoadGeneration||generatedBridge!==bridge)
       throw Error("stale_generated_audio");
@@ -206,12 +209,12 @@ async function toggleGeneratedBridgePlayback(){
       try{source.disconnect()}catch{}
       try{const closed=context.close();if(closed?.catch)closed.catch(()=>{})}catch{}
       play.disabled=false;
-      $("status").textContent="生成音频播放结束（非计费；真实设备播放仍待人工验证）。";
+      $("status").textContent=record?.hostDeliveryTest===true?"非计费测试生成 WAV 播放结束（未调用 MiniMax）。":"生成音频播放结束（非计费；真实设备播放仍待人工验证）。";
       paint();
     };
     source.start();
     play.disabled=false;
-    $("status").textContent="正在播放宿主桥交付的生成音频（Web Audio，非计费）。";
+    $("status").textContent=record?.hostDeliveryTest===true?"正在播放非计费测试生成 WAV（Web Audio，未调用 MiniMax）。":"正在播放宿主桥交付的生成音频（Web Audio，非计费）。";
     paint();
   }catch(error){
     if(token!==generatedPlaybackToken)return;
@@ -244,7 +247,7 @@ function applyResponse(response){
       record=next;
       generatedBridge={generation,bytes:bridge.bytes,durationSeconds:bridge.durationSeconds};
       loadPhase="generated-bridge-ready";
-      $("status").textContent="生成音频已由宿主桥交付；请点击播放（Web Audio，非计费）。";
+      $("status").textContent=next.hostDeliveryTest===true?"非计费测试生成 WAV 已由宿主桥交付；请点击播放（Web Audio，未调用 MiniMax）。":"生成音频已由宿主桥交付；请点击播放（Web Audio，非计费）。";
       play.disabled=false;
       paint();
       return;
