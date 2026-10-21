@@ -28,7 +28,7 @@ const privateFixtureUi=readFileSync(new URL("../ui/mcp-bubble.html",import.meta.
 const oauthBridgeUi=privateFixtureUi.replace('const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");','const isOAuthBubble=true;');
 if(oauthBridgeUi===privateFixtureUi)throw Error("oauth_bridge_ui_specialization_missing");
 // Stable nonsecret UI diagnostic marker, derived from the exact HTML served by this process.
-const OAUTH_UI_BUILD_MARKER="p2x-decode-v2-20261020";
+const OAUTH_UI_BUILD_MARKER="v6-host-smoke-20261021";
 const oauthUiWithMarker=oauthBridgeUi.replace("</body>",'<p id="oauth-ui-build" style="font-size:11px;opacity:.55">UI '+OAUTH_UI_BUILD_MARKER+'</p></body>');
 if(oauthUiWithMarker===oauthBridgeUi)throw Error("oauth_ui_marker_injection_failed");
 

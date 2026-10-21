@@ -403,6 +403,10 @@ bridgeGeneratedProbe.addEventListener("click",async()=>{
   $("bridge-generated-result").textContent="NONBILLABLE TEST 正在请求生成形状记录…";
   try{
     const result=await request("tools/call",{name:"probe_oauth_generated_delivery",arguments:{}});
+    const next=result?.structuredContent?.record;
+    validateGeneratedBridgeRecord(next);
+    if(next.hostDeliveryTest!==true||next.providerInvoked!==false||next.billable!==false)
+      throw Error("invalid_generated_host_result");
     applyResponse(result);
     $("bridge-generated-result").textContent="NONBILLABLE TEST 生成形状记录已交付；请点击播放。";
   }catch{$("bridge-generated-result").textContent="NONBILLABLE TEST 交付失败。";}
