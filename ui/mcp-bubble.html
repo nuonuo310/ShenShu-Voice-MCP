@@ -94,7 +94,7 @@ function applyResponse(response){
   const next=response?.structuredContent?.record;
   if(!next)return;
   audio.pause();
-  mediaLoadGeneration++;
+  const generation=++mediaLoadGeneration;
   loadPhase="reset";
   audio.removeAttribute("src");
   // Do not call load() on an empty source; avoid confusing reset with media load failure.
@@ -109,6 +109,9 @@ function applyResponse(response){
     }else if(next.source==="tone-fixture"&&next.generated===false&&next.audioBase64){
       target=inlineAudioUrl(next);
       $("status").textContent="离线提示音测试（并非沈述语音，不扣积分）";
+    }else if(next.source==="minimax"&&next.generated===true&&next.audioBase64&&next.audioUrl===undefined){
+      target=inlineAudioUrl(next);
+      $("status").textContent="沈述语音已生成（离线交付契约；真实设备播放尚未验证）";
     }else if(next.source==="hosted-tone"&&next.generated===false&&
        next.audioUrl==="https://shenshu-voice-mcp.onrender.com/test-tone.wav"){
       target=next.audioUrl;
@@ -121,8 +124,9 @@ function applyResponse(response){
       throw Error("unsupported_audio_result");
     }
     record=next;
+    audio.dataset.loadGeneration=String(generation);
     audio.src=target;
-    loadPhase=next.source==="private-fixture"?"private-inline":"other-source";
+    loadPhase=next.source==="private-fixture"?"private-inline":next.source==="minimax"?"generated-inline":"other-source";
     audio.load();
     play.disabled=false;
   }catch{
@@ -244,7 +248,7 @@ bridgePlayProbe.addEventListener("click",async()=>{
   }finally{bridgePlayProbe.disabled=false;}
 });
 play.addEventListener("click",async()=>{
-  try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.source==="private-fixture"?"授权测试音频（不调用 MiniMax）":record?.source==="tone-fixture"?"离线提示音测试（非沈述声音）":record?.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":"联调试听 · 固定英文样本（未调用 MiniMax）"}
+  try{audio.paused?await audio.play():audio.pause();$("status").textContent=record?.source==="minimax"?"沈述语音（离线交付契约；真实设备播放尚未验证）":record?.source==="private-fixture"?"授权测试音频（不调用 MiniMax）":record?.source==="tone-fixture"?"离线提示音测试（非沈述声音）":record?.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":"联调试听 · 固定英文样本（未调用 MiniMax）"}
   catch(error){
     const kind=typeof error?.name==="string"?error.name:"UnknownError";
     const mediaCode=Number.isInteger(audio.error?.code)?audio.error.code:0;
@@ -257,13 +261,14 @@ audio.addEventListener("play",()=>{cancelAnimationFrame(frame);paint()});
 audio.addEventListener("pause",()=>{cancelAnimationFrame(frame);paint()});
 audio.addEventListener("ended",()=>{cancelAnimationFrame(frame);paint()});
 audio.addEventListener("loadedmetadata",()=>{
-  if(!record)return;
+  if(!record||Number(audio.dataset.loadGeneration)!==mediaLoadGeneration)return;
   loadPhase="ready";
-  $("status").textContent=record.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":record.source==="private-fixture"?"授权测试音频（不调用 MiniMax）":record.source==="tone-fixture"?"离线提示音测试（非沈述声音）":"联调试听 · 固定英文样本（未调用 MiniMax）";
+  $("status").textContent=record.source==="minimax"?"沈述语音（离线交付契约；真实设备播放尚未验证）":record.source==="hosted-tone"?"HTTPS 固定提示音测试（不扣积分）":record.source==="private-fixture"?"授权测试音频（不调用 MiniMax）":record.source==="tone-fixture"?"离线提示音测试（非沈述声音）":"联调试听 · 固定英文样本（未调用 MiniMax）";
   paint();
 });
 audio.addEventListener("error",()=>{
-  if(loadPhase==="reset"||!audio.getAttribute("src"))return;
+  if(loadPhase==="reset"||!audio.getAttribute("src")||
+     Number(audio.dataset.loadGeneration)!==mediaLoadGeneration)return;
   const code=Number.isInteger(audio.error?.code)?audio.error.code:0;
   // A late media error can be followed by a successful metadata event on iOS.
   // Preserve the diagnostic until success is observed; never mask a persistent failure.
