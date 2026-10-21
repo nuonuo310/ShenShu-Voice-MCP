@@ -11,6 +11,8 @@ export function createScopedQualificationWriteStore({client}={}){
  return Object.freeze({
   async reserveAtomic({subject,day,requestId,limit}={}){
    if(subject!==PRINCIPAL||day!==DAY||limit!==3||!validRequest(requestId))throw Error("qualification_scope_denied");
+   if(attempted.has(requestId))throw Error("qualification_replay_denied");
+   attempted.add(requestId); // Mark before network, including timeout; never retry.
    const rows=await client.query(D1_PAID_SQL.reserve,[requestId,subject,day,3]);
    const row=rows?.[0];
    if(!row)return {reserved:false};
@@ -19,12 +21,16 @@ export function createScopedQualificationWriteStore({client}={}){
   },
   async issue({grantId,requestId,subject}={}){
    if(subject!==PRINCIPAL||!validRequest(requestId)||grantId!=="drygrant_"+requestId.slice(7)||!ID.test(grantId))throw Error("qualification_scope_denied");
+   if(!attempted.has(requestId)||issued.has(requestId)||issued.size>=3)throw Error("qualification_grant_limit_denied");
+   issued.add(requestId); // Mark before network; uncertain results cannot be retried.
    const rows=await client.query(D1_PAID_SQL.issue,[grantId,requestId,subject]);
    if(rows?.length>1)throw Error("qualification_result_invalid");
    return {issued:rows?.[0]?.grant_id===grantId};
   },
   async consume({grantId,requestId,subject}={}){
    if(subject!==PRINCIPAL||!validRequest(requestId)||grantId!=="drygrant_"+requestId.slice(7)||!ID.test(grantId))throw Error("qualification_scope_denied");
+   if(!issued.has(requestId)||consumed.has(requestId))throw Error("qualification_consume_replay_denied");
+   consumed.add(requestId);
    const rows=await client.query(D1_PAID_SQL.consume,[grantId,requestId,subject]);
    if(rows?.length>1)throw Error("qualification_result_invalid");
    return {consumed:rows?.[0]?.grant_id===grantId};
