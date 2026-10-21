@@ -16,6 +16,10 @@ import { createAuth0JwksCache } from "./auth0-jwks-cache.js";
 import { createD1AdmissionDryRun } from "./d1-admission-dry-run.js";
 import { preparePrivateFixtureAudio } from "./private-fixture-delivery.js";
 import { makeInlineToneFixture } from "./inline-fixture.js";
+import {
+  makeNonbillableGeneratedHostToolResult,
+  PROPOSED_GENERATED_HOST_TOOL_NAME
+} from "./generated-host-delivery-candidate.js";
 
 const MAX_JWKS_BYTES=65536;
 const PRIVATE_FIXTURE_UI_URI="ui://shenshu/private-fixture-bubble-v2.html";
@@ -127,6 +131,13 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     inputSchema:{type:"object",properties:{},additionalProperties:false},
     securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{visibility:["app"]}}
   });
+  if(privateFixtureEnabled) tools.push({
+    name:PROPOSED_GENERATED_HOST_TOOL_NAME,
+    title:"Check OAuth generated-shape host delivery",
+    description:"App-only NONBILLABLE TEST synthetic generated-shape WAV for MCP Apps host delivery diagnosis. No MiniMax or D1.",
+    inputSchema:{type:"object",properties:{},additionalProperties:false},
+    securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{visibility:["app"]}}
+  });
   server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[{
     uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE
   }]:[]}));
@@ -161,6 +172,9 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
         structuredContent:{source:"oauth-bridge-tone",generated:false,
           audioMimeType:fixture.audioMimeType,audioBase64:fixture.audioBase64,
           durationSeconds:fixture.durationSeconds,paid_voice_enabled:false}};
+    }
+    if(request.params.name===PROPOSED_GENERATED_HOST_TOOL_NAME && privateFixtureEnabled) {
+      return makeNonbillableGeneratedHostToolResult();
     }
     if(request.params.name==="probe_oauth_ui_bridge" && privateFixtureEnabled) {
       return {content:[{type:"text",text:"OAuth UI bridge probe OK; no audio or paid tools invoked."}],
