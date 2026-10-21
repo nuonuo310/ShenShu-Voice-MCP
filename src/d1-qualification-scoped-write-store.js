@@ -8,6 +8,7 @@ export function createScopedQualificationWriteStore({client}={}){
  if(!client||typeof client.query!=="function")throw Error("missing_qualification_client");
  const requestIds=new Set(Array.from({length:12},(_,i)=>PREFIX+String(i+1).padStart(2,"0")));
  const validRequest=x=>requestIds.has(x);
+ const attempted=new Set(),issued=new Set(),consumed=new Set();
  return Object.freeze({
   async reserveAtomic({subject,day,requestId,limit}={}){
    if(subject!==PRINCIPAL||day!==DAY||limit!==3||!validRequest(requestId))throw Error("qualification_scope_denied");
