@@ -61,3 +61,9 @@ test("invalid inputs and D1 failure fail closed",async()=>{
   await assert.rejects(()=>store.reserveAtomic(reservation),/budget_store_unavailable/);
   await assert.rejects(()=>store.issue({...grant,grantId:"x"}),/invalid_grant/);
 });
+
+test("grant issue SQL binds request and principal to existing reservation",()=>{
+ assert.match(D1_PAID_SQL.issue,/FROM paid_voice_reservations AS r/);
+ assert.match(D1_PAID_SQL.issue,/r\.request_id = \?2 AND r\.principal = \?3/);
+ assert.doesNotMatch(D1_PAID_SQL.issue,/VALUES\s*\(\?1,\s*\?2,\s*\?3/);
+});
