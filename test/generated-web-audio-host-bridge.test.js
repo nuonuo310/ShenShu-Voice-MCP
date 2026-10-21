@@ -60,6 +60,7 @@ async function createHarness({ contextAvailable = true } = {}) {
     "wave", "audio", "play", "text", "status", "duration", "capability",
     "bridge-probe", "bridge-result", "bridge-audio-probe", "bridge-audio-result",
     "bridge-decode-probe", "bridge-decode-result", "bridge-play-probe", "bridge-play-result",
+    "bridge-generated-probe", "bridge-generated-result",
   ];
   const elements = Object.fromEntries(ids.map((id) => [id, fakeElement(id)]));
   const waveBars = Array.from({ length: 32 }, () => ({ classList: fakeClassList() }));

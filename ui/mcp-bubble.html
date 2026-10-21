@@ -50,6 +50,8 @@ body{margin:0;padding:10px;background:transparent}
   <p class="status" id="bridge-decode-result" aria-live="polite"></p>
   <button id="bridge-play-probe" type="button" hidden>试听桥接 WAV（非计费）</button>
   <p class="status" id="bridge-play-result" aria-live="polite"></p>
+  <button id="bridge-generated-probe" type="button" hidden>NONBILLABLE TEST · 生成形状 WAV</button>
+  <p class="status" id="bridge-generated-result" aria-live="polite"></p>
 </div>
 <audio id="audio" preload="metadata" playsinline></audio>
 <script type="module">
@@ -392,6 +394,19 @@ bridgePlayProbe.addEventListener("click",async()=>{
     $("bridge-play-result").textContent="OAuth 桥接 WAV：播放失败（"+kind+"）";
     if(context)try{await context.close()}catch{}
   }finally{bridgePlayProbe.disabled=false;}
+});
+const bridgeGeneratedProbe=$("bridge-generated-probe");
+if(isOAuthBubble)bridgeGeneratedProbe.hidden=false;
+bridgeGeneratedProbe.addEventListener("click",async()=>{
+  if(!isOAuthBubble)return;
+  bridgeGeneratedProbe.disabled=true;
+  $("bridge-generated-result").textContent="NONBILLABLE TEST 正在请求生成形状记录…";
+  try{
+    const result=await request("tools/call",{name:"probe_oauth_generated_delivery",arguments:{}});
+    applyResponse(result);
+    $("bridge-generated-result").textContent="NONBILLABLE TEST 生成形状记录已交付；请点击播放。";
+  }catch{$("bridge-generated-result").textContent="NONBILLABLE TEST 交付失败。";}
+  finally{bridgeGeneratedProbe.disabled=false;}
 });
 play.addEventListener("click",async()=>{
   if(record?.source==="minimax"){

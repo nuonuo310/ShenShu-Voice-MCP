@@ -87,6 +87,7 @@ function makeHarness(html) {
     "wave", "audio", "play", "text", "status", "duration", "capability",
     "bridge-probe", "bridge-result", "bridge-audio-probe", "bridge-audio-result",
     "bridge-decode-probe", "bridge-decode-result", "bridge-play-probe", "bridge-play-result",
+    "bridge-generated-probe", "bridge-generated-result",
   ];
   const elements = Object.fromEntries(ids.map((id) => [id, fakeElement(id)]));
   const waveBars = Array.from({ length: 32 }, () => ({ classList: fakeClassList() }));
@@ -210,11 +211,11 @@ test("local generated-shape record is bounded and explicitly nonbillable", () =>
   assert.doesNotMatch(JSON.stringify(notification), /audioUrl|https?:/i);
 });
 
-test("OAuth surface has no registered generated host probe and legacy fixed probe is unchanged", async () => {
+test("OAuth surface registers the approved generated host probe and keeps the legacy fixed probe", async () => {
   const surface = await readOAuthSurface();
 
   assert.ok(surface.toolNames.includes("probe_oauth_bridge_audio_payload"));
-  assert.equal(surface.toolNames.includes(PROPOSED_GENERATED_HOST_TOOL_NAME), false);
+  assert.equal(surface.toolNames.includes(PROPOSED_GENERATED_HOST_TOOL_NAME), true);
   assert.equal(surface.probe.source, "oauth-bridge-tone");
   assert.equal(surface.probe.generated, false);
   assert.equal(surface.probe.paid_voice_enabled, false);
@@ -223,7 +224,8 @@ test("OAuth surface has no registered generated host probe and legacy fixed prob
   assert.match(surface.html, /if\(next\.source==="minimax"\)/);
   assert.match(surface.html, /hostDeliveryTest===true/);
   assert.match(surface.html, /next\.source==="private-fixture"/);
-  assert.equal(surface.html.includes(PROPOSED_GENERATED_HOST_TOOL_NAME), false);
+  assert.equal(surface.html.includes(PROPOSED_GENERATED_HOST_TOOL_NAME), true);
+  assert.match(surface.html, /id="bridge-generated-probe"/);
 });
 
 test("actual OAuth UI resource accepts fake-host generated notification and plays only after click", async () => {
