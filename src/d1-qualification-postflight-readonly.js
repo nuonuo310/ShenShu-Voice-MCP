@@ -22,5 +22,6 @@ export async function inspectD1QualificationPostflight({plan,client}={}){
   grantRequests.add(row.request_id);
  }
  if(ids.size!==grantRequests.size)throw Error("postflight_incomplete");
+ if(ids.size!==3||grantRequests.size!==3)throw Error("postflight_insufficient_evidence");
  return Object.freeze({status:"pass",readOnly:true,reservations:ids.size,consumedGrants:grantRequests.size,paidVoiceEnabled:false});
 }
