@@ -51,13 +51,20 @@ function fakeElement(id) {
   };
 }
 
-async function createHarness({ contextAvailable = true } = {}) {
+async function createHarness({
+  contextAvailable = true,
+  initialContextState = "running",
+  contextStateAfterResume = "running",
+  resumeError = null,
+  startError = null,
+  ios = false,
+} = {}) {
   const html = await readFile(new URL("../ui/mcp-bubble.html", import.meta.url), "utf8");
   const script = html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script);
 
   const ids = [
-    "wave", "audio", "play", "text", "status", "duration", "capability",
+    "wave", "audio", "play", "text", "status", "duration", "capability", "audio-output-diagnostic",
     "bridge-probe", "bridge-result", "bridge-audio-probe", "bridge-audio-result",
     "bridge-decode-probe", "bridge-decode-result", "bridge-play-probe", "bridge-play-result",
     "bridge-generated-probe", "bridge-generated-result",
@@ -98,6 +105,9 @@ async function createHarness({ contextAvailable = true } = {}) {
 
   class FakeAudioContext {
     constructor() {
+      this.state = initialContextState;
+      this.currentTime = 0;
+      this.sampleRate = 48000;
       this.resumeCalls = 0;
       this.closeCalls = 0;
       this.sources = [];
@@ -105,12 +115,17 @@ async function createHarness({ contextAvailable = true } = {}) {
       this.destination = {};
       contexts.push(this);
     }
-    resume() { this.resumeCalls++; return Promise.resolve(); }
+    resume() {
+      this.resumeCalls++;
+      if (resumeError) return Promise.reject(resumeError);
+      this.state = contextStateAfterResume;
+      return Promise.resolve();
+    }
     async decodeAudioData(buffer) {
       this.decodedInputs.push(Buffer.from(buffer));
       if (decodeGate) await decodeGate;
       if (decodeError) throw decodeError;
-      return { duration: decodeDuration };
+      return { duration: decodeDuration, sampleRate: 16000, numberOfChannels: 1 };
     }
     createBufferSource() {
       const context = this;
@@ -122,7 +137,7 @@ async function createHarness({ contextAvailable = true } = {}) {
         connectCalls: 0,
         disconnectCalls: 0,
         connect(destination) { this.connectCalls++; this.destination = destination; },
-        start() { this.startCalls++; },
+        start() { this.startCalls++; if (startError) throw startError; },
         stop() { this.stopCalls++; },
         disconnect() { this.disconnectCalls++; },
       };
@@ -143,10 +158,14 @@ async function createHarness({ contextAvailable = true } = {}) {
     addEventListener(type, listener) { if (type === "message") messageListeners.push(listener); },
   };
   const document = { getElementById(id) { return elements[id] ?? null; } };
+  const navigator = ios
+    ? { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)", platform: "iPhone", maxTouchPoints: 5 }
+    : { userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", platform: "Win32", maxTouchPoints: 0 };
 
   vm.runInNewContext(script, {
     window,
     document,
+    navigator,
     atob,
     btoa,
     requestAnimationFrame: () => 1,
@@ -179,6 +198,7 @@ async function createHarness({ contextAvailable = true } = {}) {
     audio,
     play: elements.play,
     status: elements.status,
+    diagnostic: elements["audio-output-diagnostic"],
     window,
     posted,
     contexts,
@@ -187,6 +207,7 @@ async function createHarness({ contextAvailable = true } = {}) {
     setDecodeDuration(value) { decodeDuration = value; },
     setDecodeError(value) { decodeError = value; },
     setDecodeGate(value) { decodeGate = value; },
+    source(id = 0) { return contexts[id]?.sources[0]; },
   };
 }
 
@@ -334,4 +355,55 @@ test("legacy tone-fixture playback remains on the existing HTMLAudioElement path
   await h.clickPlay();
   assert.equal(h.audio.playCalls, 1);
   assert.equal(h.contexts.length, 0);
+});
+
+test("iPhone fake harness records gesture, context, resume, decode and start without secrets", async () => {
+  const h = await createHarness({ ios: true });
+  h.dispatch(generatedRecord());
+  await h.clickPlay();
+
+  assert.equal(h.contexts.length, 1);
+  assert.equal(h.contexts[0].sources.length, 1);
+  assert.equal(h.contexts[0].sources[0].startCalls, 1);
+  assert.match(h.diagnostic.textContent, /s1-20261023/);
+  assert.match(h.diagnostic.textContent, /宿主 iOS/);
+  assert.match(h.diagnostic.textContent, /路径 web-audio-generated/);
+  assert.match(h.diagnostic.textContent, /手势 direct-click/);
+  assert.match(h.diagnostic.textContent, /ctx running/);
+  assert.match(h.diagnostic.textContent, /resume resolved/);
+  assert.match(h.diagnostic.textContent, /decode ok 0\.70s 16000Hz 1ch/);
+  assert.match(h.diagnostic.textContent, /source started/);
+  assert.doesNotMatch(h.diagnostic.textContent, new RegExp(fixture.audioBase64.slice(0, 24)));
+});
+
+test("iPhone interrupted context fails closed before decode or source start", async () => {
+  const h = await createHarness({ ios: true, initialContextState: "suspended", contextStateAfterResume: "interrupted" });
+  h.dispatch(generatedRecord());
+  await h.clickPlay();
+
+  assert.equal(h.contexts.length, 1);
+  assert.equal(h.contexts[0].resumeCalls, 1);
+  assert.equal(h.contexts[0].decodedInputs.length, 0);
+  assert.equal(h.contexts[0].sources.length, 0);
+  assert.match(h.status.textContent, /上下文未运行/);
+  assert.match(h.diagnostic.textContent, /ctx interrupted/);
+  assert.match(h.diagnostic.textContent, /source failed/);
+});
+
+test("rejected resume and source start errors are diagnosed and never reported as audible", async () => {
+  const resumeFailure = await createHarness({ ios: true, resumeError: new Error("NotAllowedError") });
+  resumeFailure.dispatch(generatedRecord());
+  await resumeFailure.clickPlay();
+  assert.equal(resumeFailure.contexts[0].decodedInputs.length, 0);
+  assert.equal(resumeFailure.contexts[0].sources.length, 0);
+  assert.match(resumeFailure.status.textContent, /播放失败/);
+  assert.match(resumeFailure.diagnostic.textContent, /source failed/);
+
+  const startFailure = await createHarness({ ios: true, startError: new Error("InvalidStateError") });
+  startFailure.dispatch(generatedRecord());
+  await startFailure.clickPlay();
+  assert.equal(startFailure.contexts[0].sources.length, 1);
+  assert.equal(startFailure.contexts[0].sources[0].startCalls, 1);
+  assert.match(startFailure.status.textContent, /播放失败/);
+  assert.match(startFailure.diagnostic.textContent, /source failed/);
 });
