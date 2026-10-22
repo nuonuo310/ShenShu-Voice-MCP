@@ -15,13 +15,13 @@ Authority: ShenShu Voice total control. Governing: `nuonuo310/Shenshu-Continuity
 
 Freeze only when all nine have concrete evidence; no later feature can move this line.
 
-## CURRENT STATUS — conservative 3/9 verified
+## CURRENT STATUS — conservative 2/9 fully verified
 - Gate 1: actual staging ChatGPT OAuth `verify_shenshu_login` returned `authenticated:true`, `paid_voice_enabled:false`. Verified staging identity, not proof of paid integration.
 - Gate 8: public MOCK vs protected route separation is source/offline verified; staging deployment is separate.
-- Gate 6 partial: actual desktop OAuth protected generated-shape NONBILLABLE fake WAV user-confirmed audible (PR #82); actual iPhone new and old Web Audio bridge silent despite UI/progress (PR #83). Historical older iPhone audible fixed WAV report does not overrule current regression.
+- Gate 5 partial: existing WAV validator has offline tests; actual provider output has NOT been verified.\n- Gate 6 partial: actual desktop OAuth protected generated-shape NONBILLABLE fake WAV user-confirmed audible (PR #82); actual iPhone new and old Web Audio bridge silent despite UI/progress (PR #83). Historical older iPhone audible fixed WAV report does not overrule current regression.
 - Gates 2,3,4,5,7: modules and offline fake tests exist, but actual combined trusted paid path not mounted/qualified.
 - Gate 9: zero authorized real MiniMax E2E smoke; explicit approval required later.
-- Counting: 3/9 strict gates = gate 1, gate 8 and limited existing validated WAV format contract gate 5 *as an offline format-validator gate only*. Gate 5 is NOT provider-output-verified; if requiring end-to-end provider validation, strict full E2E count is 2/9. Never claim 3/9 fully production-proven. This distinction must be retained in all reports.
+- Counting: 2/9 fully verified at the current V1 proof level (gates 1 and 8). WAV validation is offline partial only; no claim of provider output or full gate 5 PASS.
 
 ## V1 BLOCKERS — four independent domains
 B1. iPhone private generated/bridge audio: UI and progress but silent; isolate iOS host/Web Audio output and obtain user-confirmed audible result for V1 path. No blind repeated taps.
