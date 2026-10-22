@@ -84,7 +84,7 @@ function makeHarness(html) {
   const script = html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script);
   const ids = [
-    "wave", "audio", "play", "text", "status", "duration", "capability",
+    "wave", "audio", "play", "text", "status", "duration", "capability", "audio-output-diagnostic",
     "bridge-probe", "bridge-result", "bridge-audio-probe", "bridge-audio-result",
     "bridge-decode-probe", "bridge-decode-result", "bridge-play-probe", "bridge-play-result",
     "bridge-generated-probe", "bridge-generated-result",

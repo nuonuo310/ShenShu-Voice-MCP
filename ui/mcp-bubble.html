@@ -41,6 +41,7 @@ body{margin:0;padding:10px;background:transparent}
   </div>
   <p class="text" id="text"></p>
   <p class="status" id="status">等待 MCP 工具结果…</p>
+  <p class="status" id="audio-output-diagnostic" aria-live="polite"></p>
   <p class="status" id="capability" aria-live="polite"></p>
   <button id="bridge-probe" type="button" hidden>检查 OAuth 通信桥</button>
   <p class="status" id="bridge-result" aria-live="polite"></p>
@@ -73,15 +74,47 @@ function reportMediaCapability(){
 reportMediaCapability();
 
 const fmt=s=>Number.isFinite(s)?`${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,"0")}`:"0:00";
+const VOICE_UI_DIAGNOSTIC_VERSION="s1-20261023";
+const audioOutputDiagnostic={path:"none",gesture:"none",context:"not-created",resume:"not-called",decode:"not-started",source:"not-started",ended:false};
+function isIosHost(){
+  try{
+    const nav=typeof navigator!=="undefined"?navigator:null;
+    return /iPhone|iPad|iPod/.test(nav?.userAgent||"")||
+      (nav?.platform==="MacIntel"&&Number(nav?.maxTouchPoints)>1);
+  }catch{return false}
+}
+function hostBuildMarker(){
+  const node=$("oauth-ui-build");
+  const text=typeof node?.textContent==="string"?node.textContent.trim():"";
+  return text?text.slice(0,80):"host-not-exposed";
+}
+function contextState(context){
+  return typeof context?.state==="string"?context.state:"unknown";
+}
+function renderAudioOutputDiagnostic(){
+  const d=audioOutputDiagnostic;
+  $("audio-output-diagnostic").textContent=
+    "输出诊断 "+VOICE_UI_DIAGNOSTIC_VERSION+" · 宿主 "+(isIosHost()?"iOS":"other")+
+    " · "+hostBuildMarker()+" · 路径 "+d.path+" · 手势 "+d.gesture+
+    " · ctx "+d.context+" · resume "+d.resume+" · decode "+d.decode+
+    " · source "+d.source+" · ended "+(d.ended?"yes":"no");
+}
+function updateAudioOutputDiagnostic(patch={}){
+  Object.assign(audioOutputDiagnostic,patch);
+  renderAudioOutputDiagnostic();
+}
+renderAudioOutputDiagnostic();
 function paint(){
   const d=Number.isFinite(audio.duration)?audio.duration:generatedBridge?.durationSeconds??record?.durationSeconds??0;
-  const p=d?Math.min(1,audio.currentTime/d):0;
+  const generatedElapsed=generatedPlayback?.playing&&Number.isFinite(generatedPlayback.context?.currentTime)&&
+    Number.isFinite(generatedPlayback.startedAt)?Math.max(0,generatedPlayback.context.currentTime-generatedPlayback.startedAt):0;
+  const p=d?Math.min(1,(generatedPlayback?generatedElapsed:audio.currentTime)/d):0;
   $("duration").textContent=fmt(d);
   wave.querySelectorAll("i").forEach((bar,i)=>bar.classList.toggle("heard",(i+.5)/heights.length<=p));
   const generatedPlaying=generatedPlayback?.playing===true;
   play.classList.toggle("playing",generatedPlaying||!audio.paused);
   play.setAttribute("aria-label",generatedPlaying||!audio.paused?"暂停语音":"播放语音");
-  if(!audio.paused)frame=requestAnimationFrame(paint);
+  if(generatedPlaying||!audio.paused)frame=requestAnimationFrame(paint);
 }
 function inlineAudioUrl(next){
   if(next.audioMimeType!=="audio/wav"||typeof next.audioBase64!=="string" ||
@@ -149,6 +182,7 @@ function disposeGeneratedPlayback(){
   generatedPlayback=null;
   generatedPlaybackToken++;
   if(!playback)return;
+  updateAudioOutputDiagnostic({source:"stopped",ended:false});
   if(playback.source){
     playback.source.onended=null;
     try{playback.source.stop()}catch{}
@@ -162,6 +196,7 @@ function generatedPlaybackErrorMessage(error){
   const kind=error?.message;
   if(kind==="stale_generated_audio")return "已忽略过期的生成音频结果。";
   if(kind==="audio_context_unavailable")return "Web Audio 不可用，未播放生成音频。";
+  if(kind==="audio_context_not_running")return "Web Audio 上下文未运行，已拒绝伪播放。";
   if(kind==="audio_decode_failed")return "生成音频 Web Audio 解码失败，未播放。";
   if(kind==="invalid_decoded_audio")return "生成音频解码时长不符合边界，未播放。";
   return "生成音频 Web Audio 播放失败，未播放。";
@@ -182,41 +217,51 @@ async function toggleGeneratedBridgePlayback(){
   try{
     const Context=window.AudioContext||window.webkitAudioContext;
     if(typeof Context!=="function")throw Error("audio_context_unavailable");
+    updateAudioOutputDiagnostic({path:"web-audio-generated",gesture:"direct-click",context:"creating",resume:"pending",decode:"not-started",source:"not-started",ended:false});
     context=new Context();
+    updateAudioOutputDiagnostic({context:contextState(context)});
     const unlocked=context.resume();
+    updateAudioOutputDiagnostic({resume:"pending",context:contextState(context)});
     generatedPlayback={token,generation,context,source:null,starting:true,playing:false};
     play.disabled=true;
     $("status").textContent=record?.hostDeliveryTest===true?"正在解码非计费测试生成 WAV（未调用 MiniMax）…":"正在解码宿主桥交付的生成音频…";
     await unlocked;
+    updateAudioOutputDiagnostic({resume:"resolved",context:contextState(context)});
     if(token!==generatedPlaybackToken||generation!==mediaLoadGeneration||generatedBridge!==bridge)
       throw Error("stale_generated_audio");
+    if(!["running","unknown"].includes(contextState(context)))throw Error("audio_context_not_running");
     const copy=new Uint8Array(bridge.bytes.length);
     copy.set(bridge.bytes);
     let decoded;
+    updateAudioOutputDiagnostic({decode:"decoding"});
     try{decoded=await context.decodeAudioData(copy.buffer)}
     catch{throw Error("audio_decode_failed")}
     if(token!==generatedPlaybackToken||generation!==mediaLoadGeneration||generatedBridge!==bridge)
       throw Error("stale_generated_audio");
     if(!decoded||!Number.isFinite(decoded.duration)||decoded.duration<0.2||decoded.duration>60)
       throw Error("invalid_decoded_audio");
+    updateAudioOutputDiagnostic({decode:`ok ${decoded.duration.toFixed(2)}s ${Number(decoded.sampleRate)||0}Hz ${Number(decoded.numberOfChannels)||0}ch`});
     const source=context.createBufferSource();
     source.buffer=decoded;
     source.connect(context.destination);
-    const active={token,generation,context,source,starting:false,playing:true,duration:decoded.duration};
+    const active={token,generation,context,source,starting:false,playing:true,duration:decoded.duration,startedAt:context.currentTime};
     generatedPlayback=active;
     source.onended=()=>{
       if(generatedPlayback!==active)return;
       generatedPlayback=null;
       generatedPlaybackToken++;
+      updateAudioOutputDiagnostic({source:"ended",ended:true,context:contextState(context)});
       try{source.disconnect()}catch{}
       try{const closed=context.close();if(closed?.catch)closed.catch(()=>{})}catch{}
       play.disabled=false;
       $("status").textContent=record?.hostDeliveryTest===true?"非计费测试生成 WAV 播放结束（未调用 MiniMax）。":"生成音频播放结束（非计费；真实设备播放仍待人工验证）。";
       paint();
     };
+    updateAudioOutputDiagnostic({source:"starting",context:contextState(context)});
     source.start();
+    updateAudioOutputDiagnostic({source:"started",context:contextState(context)});
     play.disabled=false;
-    $("status").textContent=record?.hostDeliveryTest===true?"正在播放非计费测试生成 WAV（Web Audio，未调用 MiniMax）。":"正在播放宿主桥交付的生成音频（Web Audio，非计费）。";
+    $("status").textContent=record?.hostDeliveryTest===true?"非计费测试生成 WAV 的 Web Audio 源已启动；请确认设备是否出声（未调用 MiniMax）。":"生成音频的 Web Audio 源已启动；请确认设备是否出声（非计费）。";
     paint();
   }catch(error){
     if(token!==generatedPlaybackToken)return;
@@ -225,6 +270,7 @@ async function toggleGeneratedBridgePlayback(){
       try{const closed=context.close();if(closed?.catch)closed.catch(()=>{})}catch{}
     }
     play.disabled=false;
+    updateAudioOutputDiagnostic({source:"failed",context:contextState(context)});
     $("status").textContent=generatedPlaybackErrorMessage(error);
     paint();
   }
@@ -371,8 +417,11 @@ bridgePlayProbe.addEventListener("click",async()=>{
     const Context=window.AudioContext||window.webkitAudioContext;
     if(typeof Context!=="function")throw Error("audio_context_unavailable");
     // Create and resume within the direct click gesture, before awaiting host bridge.
+    updateAudioOutputDiagnostic({path:"web-audio-fixed-bridge",gesture:"direct-click",context:"creating",resume:"pending",decode:"not-started",source:"not-started",ended:false});
     context=new Context();
+    updateAudioOutputDiagnostic({context:contextState(context)});
     const unlocked=context.resume();
+    updateAudioOutputDiagnostic({resume:"pending",context:contextState(context)});
     const response=await request("tools/call",{name:"probe_oauth_bridge_audio_payload",arguments:{}});
     const x=response?.structuredContent;
     if(x?.source!=="oauth-bridge-tone"||x?.generated!==false||x?.paid_voice_enabled!==false||x?.audioMimeType!=="audio/wav"||typeof x.audioBase64!=="string"||x.audioBase64.length>2800000||!/^[A-Za-z0-9+/]+={0,2}$/.test(x.audioBase64))throw Error("invalid_payload");
@@ -381,17 +430,26 @@ bridgePlayProbe.addEventListener("click",async()=>{
     const bytes=new Uint8Array(raw.length);
     for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
     await unlocked;
+    updateAudioOutputDiagnostic({resume:"resolved",context:contextState(context)});
+    if(!["running","unknown"].includes(contextState(context)))throw Error("audio_context_not_running");
+    updateAudioOutputDiagnostic({decode:"decoding"});
     const decoded=await context.decodeAudioData(bytes.buffer);
     if(!decoded||!Number.isFinite(decoded.duration)||decoded.duration<0.2||decoded.duration>60)throw Error("invalid_decoded_audio");
+    updateAudioOutputDiagnostic({decode:`ok ${decoded.duration.toFixed(2)}s ${Number(decoded.sampleRate)||0}Hz ${Number(decoded.numberOfChannels)||0}ch`});
     const node=context.createBufferSource();
     node.buffer=decoded;
     node.connect(context.destination);
-    node.onended=()=>{$("bridge-play-result").textContent="OAuth 桥接 WAV：试听结束（非计费）";void context.close();};
+    node.onended=()=>{updateAudioOutputDiagnostic({source:"ended",ended:true,context:contextState(context)});$("bridge-play-result").textContent="OAuth 桥接 WAV：试听结束（非计费）";void context.close();};
+    updateAudioOutputDiagnostic({source:"starting",context:contextState(context)});
     node.start();
-    $("bridge-play-result").textContent="OAuth 桥接 WAV：正在播放固定提示音";
+    updateAudioOutputDiagnostic({source:"started",context:contextState(context)});
+    $("bridge-play-result").textContent="OAuth 桥接 WAV：Web Audio 源已启动；请确认设备是否出声";
   }catch(error){
-    const kind=typeof error?.name==="string"?error.name:"PlaybackError";
-    $("bridge-play-result").textContent="OAuth 桥接 WAV：播放失败（"+kind+"）";
+    const code=typeof error?.message==="string"&&/^(audio_|invalid_)/.test(error.message)?error.message:
+      (typeof error?.name==="string"?error.name:"PlaybackError");
+    const label=code==="audio_context_not_running"?"上下文未运行":code;
+    updateAudioOutputDiagnostic({source:"failed",context:contextState(context)});
+    $("bridge-play-result").textContent="OAuth 桥接 WAV：播放失败（"+label+"）";
     if(context)try{await context.close()}catch{}
   }finally{bridgePlayProbe.disabled=false;}
 });

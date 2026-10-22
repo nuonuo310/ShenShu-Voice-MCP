@@ -332,11 +332,11 @@ function fakeElement(id) {
   };
 }
 
-function makeUiHarness(html, href) {
+function makeUiHarness(html, href, { contextStateAfterResume = "running" } = {}) {
   const script = html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script);
   const ids = [
-    "wave", "audio", "play", "text", "status", "duration", "capability",
+    "wave", "audio", "play", "text", "status", "duration", "capability", "audio-output-diagnostic",
     "bridge-probe", "bridge-result", "bridge-audio-probe", "bridge-audio-result",
     "bridge-decode-probe", "bridge-decode-result", "bridge-play-probe", "bridge-play-result",
     "bridge-generated-probe", "bridge-generated-result",
@@ -371,6 +371,8 @@ function makeUiHarness(html, href) {
   const contexts = [];
   class FakeAudioContext {
     constructor() {
+      this.state = "suspended";
+      this.currentTime = 0;
       this.resumeCalls = 0;
       this.closeCalls = 0;
       this.decodedInputs = [];
@@ -378,10 +380,10 @@ function makeUiHarness(html, href) {
       this.destination = {};
       contexts.push(this);
     }
-    resume() { this.resumeCalls++; return Promise.resolve(); }
+    resume() { this.resumeCalls++; this.state = contextStateAfterResume; return Promise.resolve(); }
     async decodeAudioData(buffer) {
       this.decodedInputs.push(Buffer.from(buffer));
-      return { duration: fixture.durationSeconds };
+      return { duration: fixture.durationSeconds, sampleRate: 16000, numberOfChannels: 1 };
     }
     createBufferSource() {
       const node = {
@@ -526,6 +528,38 @@ test("public UI hides and inertly rejects the protected generated button", async
   assert.equal(harness.findToolCall(PROPOSED_GENERATED_HOST_TOOL_NAME), undefined);
   assert.equal(harness.contexts.length, 0);
   assert.equal(harness.elements["bridge-generated-result"].textContent, "");
+});
+
+test("legacy fixed bridge reports direct-gesture diagnostics and fails closed when iOS interrupts", async () => {
+  const surface = await readOAuthSurface();
+  const healthy = makeUiHarness(
+    surface.html,
+    "https://host.invalid/ui/private-fixture-bubble-v2.html",
+  );
+  const clicked = healthy.click("bridge-play-probe");
+  const call = healthy.findToolCall("probe_oauth_bridge_audio_payload");
+  assert.ok(call);
+  healthy.resolveRpc(call.id, { structuredContent: surface.fixed });
+  await clicked;
+  assert.equal(healthy.contexts.length, 1);
+  assert.equal(healthy.contexts[0].sources.length, 1);
+  assert.equal(healthy.contexts[0].sources[0].startCalls, 1);
+  assert.match(healthy.elements["audio-output-diagnostic"].textContent, /路径 web-audio-fixed-bridge/);
+  assert.match(healthy.elements["audio-output-diagnostic"].textContent, /手势 direct-click/);
+
+  const interrupted = makeUiHarness(
+    surface.html,
+    "https://host.invalid/ui/private-fixture-bubble-v2.html",
+    { contextStateAfterResume: "interrupted" },
+  );
+  const blocked = interrupted.click("bridge-play-probe");
+  const blockedCall = interrupted.findToolCall("probe_oauth_bridge_audio_payload");
+  interrupted.resolveRpc(blockedCall.id, { structuredContent: surface.fixed });
+  await blocked;
+  assert.equal(interrupted.contexts[0].decodedInputs.length, 0);
+  assert.equal(interrupted.contexts[0].sources.length, 0);
+  assert.match(interrupted.elements["bridge-play-result"].textContent, /上下文未运行/);
+  assert.match(interrupted.elements["audio-output-diagnostic"].textContent, /ctx interrupted/);
 });
 
 test("legacy fixed bridge, private fixture and hosted tone remain unchanged", async () => {
