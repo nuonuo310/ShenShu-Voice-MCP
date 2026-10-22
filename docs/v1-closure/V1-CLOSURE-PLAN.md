@@ -23,15 +23,30 @@ Freeze only when all nine have concrete evidence; no later feature can move this
 - Gate 9: zero authorized real MiniMax E2E smoke; explicit approval required later.
 - Counting: 2/9 fully verified at the current V1 proof level (gates 1 and 8). WAV validation is offline partial only; no claim of provider output or full gate 5 PASS.
 
+### 2026-10-23 S1/S2 offline update — strict count still 2/9
+
+- S1 offline diagnostic candidate is implemented and fake-iOS tested. It adds
+  nonsecret output-state evidence and fail-closed handling for suspended or
+  interrupted contexts. iPhone audibility is still **NOT VERIFIED**; B1 remains
+  open. No source-level regression was established for the historical
+  `e498e57` fixed-bridge playback code.
+- S2 offline paid composition is implemented and tested end-to-end with a signed
+  identity fixture, an injected durable-store model and one fake provider
+  attempt. No real D1, cloud delivery or MiniMax behavior was exercised.
+- Evidence: `docs/v1-closure/S1-S2-IMPLEMENTATION-EVIDENCE.md`.
+
 ## V1 BLOCKERS — four independent domains
 B1. iPhone private generated/bridge audio: UI and progress but silent; isolate iOS host/Web Audio output and obtain user-confirmed audible result for V1 path. No blind repeated taps.
+  - 2026-10-23: bounded diagnostics complete; audible device evidence pending separate staging approval.
 B2. Paid admission and trusted wiring: verified principal -> durable D1 atomic reservation -> server-side one-use grant consumption -> one fixed MiniMax request -> validated WAV private record. No caller-authorized booleans. Prove concurrent/replay/day-limit/uncertain-upstream and no retry. Real paid D1 qualification must be separately gated.
+  - 2026-10-23: offline composition and adversarial tests complete; real D1 remains unexercised.
 B3. V1 fail-closed and private-audio evidence: ensure no duplicate charge on replay, timeout, uncertain response; no public permanent audio URL, bearer or secret leakage, no public MOCK regression. This is acceptance hardening of B2 and B1, not an unlimited new subsystem.
+  - 2026-10-23: offline fail-closed/private-record checks complete; cloud and E2E evidence remain open.
 B4. One explicit user-approved real MiniMax E2E smoke with fixed approved model/voice, maximum spend and bounded audit; NOT authorized by this plan.
 
 ## REMAINING SLICES — four, no perpetual expansion
-S1: iPhone silent-output diagnostic + minimal bounded fix, offline proof, then separately approved staging deployment and one iPhone manual verification. Close B1 only with audible observation.
-S2: integrate verified OAuth principal, durable quota/reservation/one-use grant, fixed MiniMax adapter and generated private record in a fail-closed *offline* candidate. Run duplicate/replay/concurrency/timeout/uncertain billing tests. This closes offline implementation portion of B2/B3; actual D1 and cloud activation remain separately authorized.
+S1: **offline diagnostic/fix candidate complete (2026-10-23).** Still requires separately approved staging deployment and one iPhone manual verification. Close B1 only with audible observation.
+S2: **offline integration complete (2026-10-23).** Verified principal, durable reservation, one-use grant, fixed adapter and private record are composed and adversarially tested. No real D1 or cloud activation.
 S3: one bounded staging qualification of real D1 paid namespace and private delivery, with explicit architecture/credential/cloud approval, independent review and rollback; no MiniMax call. Close B2/B3 only with concrete proof.
 S4: exactly one separately approved billable MiniMax E2E smoke, with capped request, fixed model/voice, desktop+iPhone private playback, and evidence. Close B4 and remaining gate 6/9.
 
