@@ -122,7 +122,8 @@ or B3 at the V1 proof level; S3 real-D1 qualification remains mandatory.
 - JS syntax checks for changed modules/tests: PASS.
 - Extracted UI module syntax check: PASS.
 - `git diff --check`: PASS.
-- GitHub Actions: not yet run at recording time; PR CI is the next check.
+- GitHub Actions: PASS on Draft PR #86 for head
+  `2b03c93deaf0d9569280cd93946e65c1d7aa0dc2`, run `39835703962`.
 
 ## V1 status update
 
