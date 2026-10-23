@@ -401,6 +401,27 @@ test("strict routing, authorization and bounded JSON reject before D1", async ()
       db.close();
     }
   }
+
+  const forgedDb = makeDb();
+  try {
+    const forgedBinding = createWorkerD1Binding(forgedDb);
+    const { candidate } = makeCandidate(forgedBinding, { authorize: async () => false });
+    const forged = new Request("https://private.invalid" + ADMIT_PATH, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-access-jwt-assertion": "forged-token",
+        "cf-access-client-id": "forged-client",
+      },
+      body: JSON.stringify(admitBody()),
+    });
+    const result = await candidate.fetch(forged);
+    assert.equal(result.status, 403);
+    assert.equal(forgedBinding.stats.prepareCalls, 0);
+    assert.equal(countRows(forgedDb, "paid_voice_operations"), 0);
+  } finally {
+    forgedDb.close();
+  }
 });
 
 test("missing D1 binding and invalid factory configuration fail closed", async () => {
