@@ -5,9 +5,10 @@
  * accepts already-verified internal requests from Render, uses only its native
  * D1 binding and submits the four fixed admission statements in one batch.
  *
- * Outer Cloudflare Access is a deployment prerequisite. The injected
- * authorize() hook represents that deployment gate; this module does not treat
- * any request header as authentication and must not be exposed directly.
+ * A deployment must place this candidate behind either the dormant signed
+ * bridge or an equivalent deployment verifier. The injected authorize() hook
+ * represents that verified boundary; this module does not treat any request
+ * header as authentication and must not be exposed directly.
  */
 import { D1_OPERATION_SQL } from "../src/d1-operation-sql.js";
 import { D1_PAID_SQL } from "../src/d1-paid-store.js";
