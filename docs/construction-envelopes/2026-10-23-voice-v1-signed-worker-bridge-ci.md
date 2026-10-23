@@ -1,0 +1,25 @@
+# Voice V1 continuous construction — signed Worker bridge and Linux SQLite CI gate
+
+Authority: ShenShu total control. Follow `nuonuo310/Shenshu-Continuity/rules/CONTINUOUS_CONSTRUCTION.md`, `continuity/v1-closure-baselines-2026-10-22.md` and this repo's `docs/v1-closure/V1-CLOSURE-PLAN.md`.
+
+**Scope: OFFLINE implementation/security validation, reproducible CI, evidence and Draft PR only. NO real Cloudflare, Worker/D1 creation or deployment, Render/Auth0 changes, credentials, paid tool registration, MiniMax, production merge or cost.**
+
+## Opening gate
+Repo `nuonuo310/ShenShu-Voice-MCP`, exact parent PR #99 head `79742e84fb7d5dad21bf52e24054ce938882b73b`, parent authority PR #98 `50c5be6b7efc742d1891a6812b32df683f8f5e81`, CI #337 successful with 287 pass/31 explicit SQLite skips on Node 20. Verify origin, worktree clean state, HEAD, PR dependencies and no conflicts. Read `docs/v1-closure/WORKER-SIGNED-REQUEST-DECISION-20261023.md`, `src/worker-signed-request.js`, `worker/private-d1-worker-candidate.js`, `src/d1-transactional-operation-store.js`, `test/private-d1-worker-offline.test.js`, `test/worker-signed-request.test.js`, `.github/workflows/ci.yml`, schema 003 and security decisions. Do not reset/stash/clean/move worktrees or rewrite predecessors. STOP on drift.
+
+## Goal A: dormant signed bridge security integration
+Implement the narrowest **offline-only** Render-side request signer and Worker-side verifier composition using the existing HMAC contract. Keep it dormant and unmounted; no server.js or live MCP tool registration. Ensure the Worker invokes authorization verification BEFORE any D1 prepare/read/batch, not just a caller-injected truthy hook. Verify exact URL host/path/method/content-type, bounded raw bytes, signed body, timestamp, key ID, nonce and current/previous rotation keys. Deny malformed/unsigned/forged/expired/host/path-confused/replayed mutation attempts safely. Do not invent a durable nonce table: explicitly retain the limitation that the operation_id durable state machine is the replay anchor; only one-way conditional transitions may be replayed without a second mutation. A public workers.dev endpoint remains publicly reachable and can consume Free quota; do not describe it as private networking. If correct integration requires changing a frozen endpoint, DB schema, provider interface or trusted principal ownership, STOP with a minimal decision packet.
+
+Prove the signer sends only verified principal-derived opaque binding, operation ID, digest, byte count and fixed action; never pass bearer, plaintext voice text, model/voice IDs, raw SQL, approval or secrets in request body/log. Include negative tests with a D1 spy showing zero D1 interactions before valid authentication. Test concurrent same-operation replay, cross-principal/mismatched digest, timeout ambiguity, key rotation and fail-closed missing verifier/config; no provider calls. Use fake keys only in tests.
+
+## Goal B: actual Linux SQLite CI evidence
+Current CI `.github/workflows/ci.yml` uses Node 20 and skips 31 SQLite tests. Add a **separate minimal Node 24 Linux CI job** or matrix entry to run the transactional/Worker SQLite tests with actual execution and count, preserving existing Node 20 job and smoke. If changing the CI workflow requires a separate authorization or runner billing is uncertain, STOP with a precise recommendation; do not claim skips as PASS. Keep timeouts and permissions tight, no secrets or cloud credentials, no manual Actions dispatch. Standard PR-triggered CI is allowed as consequence of authorized Draft PR creation. No package or dependency upgrades unless indispensable and separately justified.
+
+## Allowed autonomy
+Task-scoped `src/`, `worker/`, `test/`, `docs/`, `.github/workflows/ci.yml` only. Can implement, run local targeted/full suites, ordinary fixes/retests, syntax/diff checks, commit/push dedicated branch and one Draft PR based on this authority branch. No merge/rebase of prior PRs, no Render branch changes. Preserve public MOCK and staging OAuth. Strict V1 2/9, B1 iPhone silent, B2 cloud D1, B3 private result, B4 one explicitly approved paid MiniMax E2E remain open.
+
+## Hard STOP
+Any real D1/Cloudflare API query, Worker/D1/Access creation/deploy, real credentials, Auth0/Render/connector modifications, paid MCP route activation, MiniMax/provider call, payment details, plan upgrade, production deployment, GitHub Actions manual dispatch, migration application, public MCP changes, or scope expansion. Any source evidence that Cloudflare Free/no-card is not possible requires STOP, not a card workaround.
+
+## Delivery
+Write `docs/v1-closure/SIGNED-WORKER-BRIDGE-CI-READINESS-20261023.md` with exact SHA, changed files, offline signed-bridge tests, CI Node 20 and Linux Node 24 actual execution counts, security assumptions/limitations, no-card/public endpoint risks, next independently approved cloud gate, and all real-operation counters zero. Final COMPLETE / BLOCKED / TOTAL CONTROL DECISION REQUIRED. Do not reduce 2/9 or close B1–B4 from offline evidence.
