@@ -388,9 +388,14 @@ This report is the only implementation artifact on its dedicated Draft PR.
 - First standard PR-triggered CI run: `40000502006`, **success**.
   - `sqlite-node24`: 329 tests, 329 passed, 0 failed, 0 skipped.
   - Node 20 path `test`: 329 tests, 291 passed, 38 explicit skips, 0 failed.
+- Delivery-note amendment head: `e1f535250a7b544270535caacdf16e58735a00f0`.
+- Delivery-note amendment CI run: `40000724252`, **success**.
+  - `sqlite-node24`: 329 tests, 329 passed, 0 failed, 0 skipped.
+  - Node 20 path `test`: 329 tests, 291 passed, 38 explicit skips, 0 failed.
 
-The final PR head and final CI result after this delivery-note amendment are
-recorded in the Draft PR body. No manual Actions dispatch is used.
+This evidence-note commit only records the completed results above. Its own PR
+head and CI result are recorded in the Draft PR body. No manual Actions dispatch
+is used.
 
 ## Disposition
 
