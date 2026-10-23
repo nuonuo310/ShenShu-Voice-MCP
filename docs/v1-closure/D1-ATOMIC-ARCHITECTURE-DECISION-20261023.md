@@ -100,6 +100,11 @@ The Worker batch page is strong enough to select an architecture to qualify. It
 is not evidence that this account, schema, SQL, network path or deployment will
 behave correctly. That remains the purpose of the one-run cloud gate.
 
+The same Worker page also contains the words `D1 operates in auto-commit`. The
+decisive statements for this decision are the subsequent explicit SQL-transaction
+and whole-sequence abort/rollback guarantees. Because the wording could be read
+as ambiguous out of context, the cloud rollback probe remains mandatory.
+
 ## Option comparison
 
 ### Option A - private Worker with native D1 batch binding
@@ -284,10 +289,10 @@ Only the four-statement admission batch is a multi-statement transaction.
 Provider-pending, completion and unknown transitions are single conditional
 updates. The provider call is deliberately outside every database transaction.
 
-The Worker must call the provider-facing Render process only after it has a
-confirmed `provider_pending` result. A lost or timed-out pending response means
-the provider is not called. A provider success followed by a lost completion
-response leaves the operation unknown and must not trigger a second call.
+Render must call the provider only after it has a confirmed `provider_pending`
+result from the Worker. A lost or timed-out pending response means the provider
+is not called. A provider success followed by a lost completion response leaves
+the operation unknown and must not trigger a second call.
 
 ### Ambiguity and at-most-one provider attempt
 
@@ -488,13 +493,16 @@ audibility, then one separately approved MiniMax E2E.
 - Real D1 reads/writes/queries/migrations: 0
 - Cloudflare API calls: 0
 - MiniMax or billable provider calls: 0
-- Real keys, tokens or voice IDs read/logged: 0
+- Cloudflare/Auth0/provider keys, tokens or voice IDs read/logged: 0
 - Render/Auth0/connector changes: 0
 - GitHub Actions dispatches: 0
 - Merges/rebase/rewrites: 0
 
 Read-only GitHub metadata was used for PR topology and authority CI. Read-only
 public Cloudflare documentation was fetched; no Cloudflare account API was used.
+Git and GitHub PR operations used the existing local credential helper; the
+credential value was never printed, returned in evidence or written to disk by
+this task.
 
 ## Disposition
 
