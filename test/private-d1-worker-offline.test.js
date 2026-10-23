@@ -49,6 +49,21 @@ function makeDb() {
   return db;
 }
 
+function makeCountingBinding() {
+  const stats = { prepareCalls: 0, batchCalls: 0 };
+  return {
+    stats,
+    prepare() {
+      stats.prepareCalls += 1;
+      throw new Error("d1_must_not_be_called");
+    },
+    async batch() {
+      stats.batchCalls += 1;
+      throw new Error("d1_must_not_be_called");
+    },
+  };
+}
+
 function makeCandidate(binding, {
   now = { value: NOW_MS },
   maximumDailyCalls = 3,
@@ -352,76 +367,62 @@ sqliteTest("malformed, short, failed or throwing D1 responses never become succe
 });
 
 test("strict routing, authorization and bounded JSON reject before D1", async () => {
-  const db = makeDb();
-  try {
-    const binding = createWorkerD1Binding(db);
-    const { candidate } = makeCandidate(binding);
-    const cases = [];
-    cases.push(await call(candidate, "/internal/v1/paid-operations/other", admitBody()));
-    cases.push(await call(candidate, ADMIT_PATH, null, { method: "GET" }));
-    cases.push(await call(candidate, ADMIT_PATH, admitBody(), { contentType: "text/plain" }));
-    cases.push(await call(candidate, ADMIT_PATH, admitBody(), {
-      contentType: "application/json; charset=utf-8",
-    }));
-    cases.push(await call(candidate, ADMIT_PATH, admitBody(), { query: "?debug=1" }));
-    cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), text: "secret raw text" }));
-    cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), request_id: "request_caller_0001" }));
-    cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), grant_id: "grant_caller_0001" }));
-    cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), action: "speak" }));
-    cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), text_digest: "short" }));
-    cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), text_bytes: 0 }));
-    cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), ttl_ms: 999 }));
-    cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), ttl_ms: 900001 }));
-    cases.push(await call(candidate, ADMIT_PATH, "{"));
-    cases.push(await call(candidate, ADMIT_PATH, {
-      ...admitBody(),
-      padding: "x".repeat(3000),
-    }));
-    assert.deepEqual(cases.map(entry => entry.response.status),
-      [404, 405, 415, 415, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 413]);
-    assert.equal(cases[1].response.headers.get("allow"), "POST");
-    assert.equal(cases[0].response.headers.get("access-control-allow-origin"), null);
-    assert.equal(binding.stats.prepareCalls, 0);
-    assert.equal(binding.stats.batchCalls, 0);
-    assert.equal(countRows(db, "paid_voice_operations"), 0);
-  } finally {
-    db.close();
-  }
+  const binding = makeCountingBinding();
+  const { candidate } = makeCandidate(binding);
+  const cases = [];
+  cases.push(await call(candidate, "/internal/v1/paid-operations/other", admitBody()));
+  cases.push(await call(candidate, ADMIT_PATH, null, { method: "GET" }));
+  cases.push(await call(candidate, ADMIT_PATH, admitBody(), { contentType: "text/plain" }));
+  cases.push(await call(candidate, ADMIT_PATH, admitBody(), {
+    contentType: "application/json; charset=utf-8",
+  }));
+  cases.push(await call(candidate, ADMIT_PATH, admitBody(), { query: "?debug=1" }));
+  cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), text: "secret raw text" }));
+  cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), request_id: "request_caller_0001" }));
+  cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), grant_id: "grant_caller_0001" }));
+  cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), action: "speak" }));
+  cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), text_digest: "short" }));
+  cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), text_bytes: 0 }));
+  cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), ttl_ms: 999 }));
+  cases.push(await call(candidate, ADMIT_PATH, { ...admitBody(), ttl_ms: 900001 }));
+  cases.push(await call(candidate, ADMIT_PATH, "{"));
+  cases.push(await call(candidate, ADMIT_PATH, {
+    ...admitBody(),
+    padding: "x".repeat(3000),
+  }));
+  assert.deepEqual(cases.map(entry => entry.response.status),
+    [404, 405, 415, 415, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 413]);
+  assert.equal(cases[1].response.headers.get("allow"), "POST");
+  assert.equal(cases[0].response.headers.get("access-control-allow-origin"), null);
+  assert.equal(binding.stats.prepareCalls, 0);
+  assert.equal(binding.stats.batchCalls, 0);
 
   for (const authorize of [async () => false, async () => { throw new Error("denied"); }]) {
-    const db = makeDb();
-    try {
-      const binding = createWorkerD1Binding(db);
-      const { candidate } = makeCandidate(binding, { authorize });
-      const result = await call(candidate, ADMIT_PATH, admitBody());
-      assert.equal(result.response.status, 403);
-      assert.equal(binding.stats.prepareCalls, 0);
-      assert.equal(countRows(db, "paid_voice_operations"), 0);
-    } finally {
-      db.close();
-    }
+    const guardedBinding = makeCountingBinding();
+    const { candidate: guarded } = makeCandidate(guardedBinding, { authorize });
+    const result = await call(guarded, ADMIT_PATH, admitBody());
+    assert.equal(result.response.status, 403);
+    assert.equal(guardedBinding.stats.prepareCalls, 0);
+    assert.equal(guardedBinding.stats.batchCalls, 0);
   }
 
-  const forgedDb = makeDb();
-  try {
-    const forgedBinding = createWorkerD1Binding(forgedDb);
-    const { candidate } = makeCandidate(forgedBinding, { authorize: async () => false });
-    const forged = new Request("https://private.invalid" + ADMIT_PATH, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "cf-access-jwt-assertion": "forged-token",
-        "cf-access-client-id": "forged-client",
-      },
-      body: JSON.stringify(admitBody()),
-    });
-    const result = await candidate.fetch(forged);
-    assert.equal(result.status, 403);
-    assert.equal(forgedBinding.stats.prepareCalls, 0);
-    assert.equal(countRows(forgedDb, "paid_voice_operations"), 0);
-  } finally {
-    forgedDb.close();
-  }
+  const forgedBinding = makeCountingBinding();
+  const { candidate: forgedCandidate } = makeCandidate(forgedBinding, {
+    authorize: async () => false,
+  });
+  const forged = new Request("https://private.invalid" + ADMIT_PATH, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-access-jwt-assertion": "forged-token",
+      "cf-access-client-id": "forged-client",
+    },
+    body: JSON.stringify(admitBody()),
+  });
+  const result = await forgedCandidate.fetch(forged);
+  assert.equal(result.status, 403);
+  assert.equal(forgedBinding.stats.prepareCalls, 0);
+  assert.equal(forgedBinding.stats.batchCalls, 0);
 });
 
 test("missing D1 binding and invalid factory configuration fail closed", async () => {
