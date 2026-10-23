@@ -380,9 +380,17 @@ authorized.
 
 ## Delivery note
 
-This report is the only implementation artifact on its dedicated Draft PR. The
-exact PR number, report commit and CI result are appended after PR creation and
-the standard PR-triggered CI run; no manual dispatch is used.
+This report is the only implementation artifact on its dedicated Draft PR.
+
+- Draft PR: #104, based on
+  `docs/voice-v1-cloud-qualification-preflight-20261023`.
+- First report commit: `712ebdb8e21d33a5b951920a4f0f6ffd23695e0d`.
+- First standard PR-triggered CI run: `40000502006`, **success**.
+  - `sqlite-node24`: 329 tests, 329 passed, 0 failed, 0 skipped.
+  - Node 20 path `test`: 329 tests, 291 passed, 38 explicit skips, 0 failed.
+
+The final PR head and final CI result after this delivery-note amendment are
+recorded in the Draft PR body. No manual Actions dispatch is used.
 
 ## Disposition
 
