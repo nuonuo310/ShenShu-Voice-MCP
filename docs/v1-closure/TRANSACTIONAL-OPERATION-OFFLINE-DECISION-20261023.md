@@ -153,6 +153,14 @@ Environment: Node `v24.19.0` on Windows.
   new store or runner; no production `node:sqlite`, HTTP or MiniMax dependency
   was added.
 
+### Pull-request CI
+
+- Draft PR #93 run `39970423242` is `completed/success` for head
+  `7c7fec3620288c8de564a166a16f3034e8e18389`.
+- This Node 20 CI run validates the repository-wide suite and smoke path. The
+  local SQLite cases self-skip on that runtime as described below; they ran on
+  local Node 24.19.0.
+
 Targeted cases cover the additive schema, foreign keys, indexes and result
 invariants; completed replay after reopening the database; a concurrent
 duplicate at `provider_pending`; identical text under different operations;
