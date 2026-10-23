@@ -336,6 +336,9 @@ New test-only files:
 Evidence commit:
 `c31accb2ebd4107a4f00573da8906e282147d89b`.
 
+Draft PR #95 CI run `39973319298` is `completed/success` for decision head
+`9118c66fbef6c9431438e83c877c359ae2e9e9df`.
+
 They simulate the Worker binding API over local SQLite and do not add production
 Worker code, a deployment, a dependency or network I/O. The probe verifies:
 
