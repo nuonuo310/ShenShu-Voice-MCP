@@ -312,3 +312,45 @@ test("the reviewed D1 HTTP store contract plugs into the pipeline with an inject
   assert.match(queries[1].sql, /INSERT OR IGNORE INTO paid_voice_grants/);
   assert.match(queries[2].sql, /UPDATE paid_voice_grants/);
 });
+
+test("ambiguous D1 responses fail closed before any provider attempt", async () => {
+  for (const result of [null, {bad: "shape"}, [
+    { request_id: "duplicate_row_001", slot: 1 },
+    { request_id: "duplicate_row_002", slot: 2 },
+  ]]) {
+    const client = { query: async () => result };
+    const store = createD1HttpPaidStore({ client });
+    const { invoke, calls } = makePipeline({ store });
+    await assert.rejects(invoke(makeInput()), /d1_result_invalid/);
+    assert.equal(calls.filter(item => item === "synthesize").length, 0);
+  }
+});
+
+test("D1 transport failure at any phase is single-attempt and blocks the provider", async () => {
+  for (const [phase, expectedQueries] of [["reserve", 1], ["issue", 2], ["consume", 3]]) {
+    let queries = 0;
+    const client = {
+      async query(sql, params) {
+        queries++;
+        if (sql.includes("WITH RECURSIVE")) {
+          if (phase === "reserve") throw new Error("d1_unavailable");
+          return [{ request_id: params[0], slot: 1 }];
+        }
+        if (sql.includes("INSERT OR IGNORE INTO paid_voice_grants")) {
+          if (phase === "issue") throw new Error("d1_unavailable");
+          return [{ grant_id: params[0] }];
+        }
+        if (sql.includes("UPDATE paid_voice_grants")) {
+          if (phase === "consume") throw new Error("d1_unavailable");
+          return [{ grant_id: params[0] }];
+        }
+        throw new Error("unexpected_query");
+      },
+    };
+    const store = createD1HttpPaidStore({ client });
+    const { invoke, calls } = makePipeline({ store });
+    await assert.rejects(invoke(makeInput()), /d1_unavailable/);
+    assert.equal(queries, expectedQueries);
+    assert.equal(calls.filter(item => item === "synthesize").length, 0);
+  }
+});
