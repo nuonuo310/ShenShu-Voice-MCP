@@ -279,6 +279,16 @@ Preview change, secret access, deployment, provider call or merge occurred.
 Public Cloudflare documentation and read-only GitHub metadata were fetched. No
 credential value was printed, returned in evidence or written by this task.
 
+## Delivery evidence
+
+Draft PR #113 is based on the exact authority branch commit `1f62594`. The
+read-only review commit is `06da29f0f33a9840208b0d7c5cf762807bdcab0a`. Its first
+standard `pull_request`-triggered CI run was `40116282614`, **success**; both
+Node 20 `test` and Node 24 `sqlite-node24` jobs completed successfully. No
+manual Actions dispatch was used. The final evidence-only amendment head and
+CI result are recorded in the Draft PR body so this document does not chase its
+own hash.
+
 ## V1 disposition
 
 Strict V1 remains **2/9** (gates 1 and 8 only). B1-B4 remain open:
