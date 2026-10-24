@@ -1,0 +1,13 @@
+{
+  "name": "shenshu-voice-v1-qualification-20261024",
+  "main": "worker/qualification-entry.js",
+  "compatibility_date": "2026-10-24",
+  "workers_dev": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "shenshu-voice-v1-qualification-20261024",
+      "database_id": "234913cd-8901-4607-8147-31c4a4317111"
+    }
+  ]
+}
