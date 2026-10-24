@@ -455,7 +455,10 @@ Expected final state:
 - Worker, Access, Durable Object, D1 or other cloud resource creation/deletion.
 - Worker deployment, Wrangler operation, Render or Auth0 change, connector
   refresh, or manual GitHub Actions dispatch.
-- Secret, token, key, voice ID or credential reading/logging.
+- Cloudflare, Auth0, Worker/HMAC or provider secret, token, key or voice-ID
+  reading/logging. The authorized GitHub push and Draft PR used the existing
+  local Git credential manager through its normal authentication path; no
+  credential value was printed or persisted by this task.
 - MCP/paid-tool activation, provider/MiniMax call, billing, card or upgrade.
 - Merge, production change, reset, stash, clean, rebase or history rewrite.
 
@@ -488,7 +491,9 @@ operation, Worker provisioning, deployment or provider use.
   `test` and `sqlite-node24`.
 - Real Cloudflare/D1 operations: 0.
 - Workers/Access/Durable Objects created or deployed: 0.
-- Real keys/tokens/voice IDs read or logged: 0.
+- Real Cloudflare/Auth0/Worker/provider keys, tokens or voice IDs read or logged:
+  0. (GitHub authentication was used only for the authorized push/Draft PR and
+  was neither displayed nor written to a task artifact.)
 - MiniMax/billable provider calls: 0.
 - Render/Auth0/connector changes: 0.
 - Manual Actions dispatches: 0.
