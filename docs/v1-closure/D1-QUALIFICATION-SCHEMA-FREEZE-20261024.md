@@ -481,9 +481,11 @@ operation, Worker provisioning, deployment or provider use.
 - Task branch: `work/voice-v1-d1-schema-freeze-20261024`.
 - Offline artifacts: this report and `test/d1-qualification-schema-freeze.test.js`.
 - Targeted test: `6/6 PASS`; full Node 24 suite: `335/335 PASS`.
-- Initial implementation commit: pending this commit.
-- Draft PR: pending delivery.
-- Standard PR-triggered CI: pending delivery.
+- Initial implementation commit: `e36d65a6d5fa7121c270f623731bd1b65e4df06e`.
+- Draft PR: [#106](https://github.com/nuonuo310/ShenShu-Voice-MCP/pull/106), based
+  on `docs/voice-v1-d1-schema-freeze-20261024` at the authority commit.
+- Standard PR-triggered CI run `40100770807`: `completed/success` for both
+  `test` and `sqlite-node24`.
 - Real Cloudflare/D1 operations: 0.
 - Workers/Access/Durable Objects created or deployed: 0.
 - Real keys/tokens/voice IDs read or logged: 0.
