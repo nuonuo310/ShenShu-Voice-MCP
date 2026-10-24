@@ -139,9 +139,19 @@ The tests prove, in the local process only:
   from silently skipping; the existing Node 20 job remains.
 
 The Node 24 CI job runs syntax checks, an independent `node:sqlite` probe and
-the complete `node --test` suite. The first standard PR-triggered run for this
-report is recorded below after delivery. Local success is not Cloudflare runtime,
-native D1 atomicity or real network proof.
+the complete `node --test` suite.
+
+## Standard CI evidence
+
+Draft PR #111 targets the authority branch. Its first standard
+`pull_request`-triggered CI run was `40110785959` on report head
+`f20427d3ff7aa251ce82ca35cbeeb718f8736125`: **success**. Both jobs completed
+successfully: Node 20 `test` and Node 24 `sqlite-node24`. No manual Actions
+dispatch was used. A final evidence-only amendment and its standard CI result
+are recorded in the Draft PR body so this document does not chase its own hash.
+
+Local success and hosted CI success are not Cloudflare runtime, native D1
+atomicity or real network proof.
 
 ## Unexecuted operator deployment plan
 
