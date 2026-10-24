@@ -132,6 +132,7 @@ test("the qualification manifest has exactly one fixed D1 binding and no cloud i
   assert.equal(manifest.main, "worker/qualification-entry.js");
   assert.equal(manifest.compatibility_date, "2026-10-24");
   assert.equal(manifest.workers_dev, false);
+  assert.equal(manifest.preview_urls, false);
   assert.equal(Array.isArray(manifest.d1_databases), true);
   assert.equal(manifest.d1_databases.length, 1);
   assert.deepEqual(manifest.d1_databases[0], {
@@ -188,6 +189,21 @@ test("missing, disabled or unsafe activation configuration fails closed before D
     }), 503, { error: "qualification_unavailable" }],
     ["old worker host", makeEnv(makeCountingBinding(), {
       [QUALIFICATION_ENV_NAMES.expectedHost]: "asteria-voice.example.workers.dev",
+    }), 503, { error: "qualification_unavailable" }],
+    ["version URL host", makeEnv(makeCountingBinding(), {
+      [QUALIFICATION_ENV_NAMES.expectedHost]:
+        "abc123-" + QUALIFICATION_WORKER_NAME + ".test-account.workers.dev",
+    }), 503, { error: "qualification_unavailable" }],
+    ["preview URL host", makeEnv(makeCountingBinding(), {
+      [QUALIFICATION_ENV_NAMES.expectedHost]:
+        "pr-1-" + QUALIFICATION_WORKER_NAME + ".test-account.workers.dev",
+    }), 503, { error: "qualification_unavailable" }],
+    ["nested account host", makeEnv(makeCountingBinding(), {
+      [QUALIFICATION_ENV_NAMES.expectedHost]:
+        QUALIFICATION_WORKER_NAME + ".nested.test-account.workers.dev",
+    }), 503, { error: "qualification_unavailable" }],
+    ["custom domain host", makeEnv(makeCountingBinding(), {
+      [QUALIFICATION_ENV_NAMES.expectedHost]: QUALIFICATION_WORKER_NAME + ".example.com",
     }), 503, { error: "qualification_unavailable" }],
     ["host with port", makeEnv(makeCountingBinding(), {
       [QUALIFICATION_ENV_NAMES.expectedHost]: HOST + ":8443",
@@ -251,6 +267,12 @@ test("unsigned, confused or forged requests return one 403 with zero D1 prepare/
       "https://shenshu-voice-v1-qualification-20261024.other-account.workers.dev" + ADMIT_PATH,
       { method: "POST", headers: valid.headers, body: valid.body },
     )],
+    ["version URL host", new Request("https://abc123-" + HOST + ADMIT_PATH, {
+      method: "POST", headers: valid.headers, body: valid.body,
+    })],
+    ["preview URL host", new Request("https://pr-1-" + HOST + ADMIT_PATH, {
+      method: "POST", headers: valid.headers, body: valid.body,
+    })],
     ["wrong path", new Request(ORIGIN + "/internal/v1/paid-operations/other", {
       method: "POST", headers: valid.headers, body: valid.body,
     })],
