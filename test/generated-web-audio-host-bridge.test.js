@@ -226,6 +226,21 @@ function generatedRecord(overrides = {}) {
   };
 }
 
+function privateFixtureRecord(overrides = {}) {
+  return {
+    id: "private_fixture_001",
+    title: "Authorized fixture",
+    text: "offline private fixture",
+    durationSeconds: fixture.durationSeconds,
+    voiceLabel: "fixture",
+    source: "private-fixture",
+    generated: false,
+    audioMimeType: "audio/wav",
+    audioBase64: fixture.audioBase64,
+    ...overrides,
+  };
+}
+
 test("generated audio waits for an explicit click and never enters HTMLAudioElement", async () => {
   const h = await createHarness();
   h.dispatch(generatedRecord());
@@ -247,6 +262,86 @@ test("generated audio waits for an explicit click and never enters HTMLAudioElem
   assert.equal(h.audio.src, "");
   assert.equal(h.audio.playCalls, 0);
   assert.match(h.status.textContent, /Web Audio/);
+});
+
+test("private fixture bypasses iOS media code 4 with click-gated Web Audio and no extra tool call", async () => {
+  const h = await createHarness({ ios: true });
+  h.audio.error = { code: 4 };
+  h.audio.readyState = 0;
+
+  h.dispatch(privateFixtureRecord());
+
+  assert.equal(h.contexts.length, 0);
+  assert.equal(h.audio.src, "");
+  assert.equal(h.audio.loadCalls, 0);
+  assert.equal(h.audio.playCalls, 0);
+  assert.equal(h.play.disabled, false);
+  assert.match(h.status.textContent, /Web Audio/);
+  assert.match(h.diagnostic.textContent, /s1-ios-media4-20261026/);
+  assert.match(h.diagnostic.textContent, /web-audio-private-fixture-ready/);
+  assert.equal(h.posted.filter((message) => message.method === "tools/call").length, 0);
+
+  await h.clickPlay();
+
+  assert.equal(h.contexts.length, 1);
+  assert.equal(h.contexts[0].resumeCalls, 1);
+  assert.equal(h.contexts[0].decodedInputs.length, 1);
+  assert.deepEqual(h.contexts[0].decodedInputs[0], fixtureBytes);
+  assert.equal(h.contexts[0].sources.length, 1);
+  assert.equal(h.contexts[0].sources[0].startCalls, 1);
+  assert.equal(h.audio.src, "");
+  assert.equal(h.audio.loadCalls, 0);
+  assert.equal(h.audio.playCalls, 0);
+  assert.equal(h.audio.error.code, 4);
+  assert.match(h.diagnostic.textContent, /web-audio-private-fixture/);
+  assert.match(h.diagnostic.textContent, /direct-click/);
+  assert.match(h.diagnostic.textContent, /source started/);
+  assert.doesNotMatch(h.diagnostic.textContent, new RegExp(fixture.audioBase64.slice(0, 24)));
+  assert.doesNotMatch(h.status.textContent, /audible|played successfully/i);
+  assert.equal(h.posted.filter((message) => message.method === "tools/call").length, 0);
+});
+
+test("private fixture rejects URL, generated, MIME and malformed WAV records without playback", async () => {
+  const badRecords = [
+    privateFixtureRecord({ generated: true }),
+    privateFixtureRecord({ audioUrl: "https://example.invalid/private.wav" }),
+    privateFixtureRecord({ audioMimeType: "audio/mpeg" }),
+    privateFixtureRecord({ audioBase64: Buffer.alloc(200, 0x61).toString("base64") }),
+    privateFixtureRecord({ audioBase64: "A".repeat(3_000_004) }),
+  ];
+  for (const record of badRecords) {
+    const h = await createHarness({ ios: true });
+    h.dispatch(record);
+    assert.equal(h.contexts.length, 0);
+    assert.equal(h.audio.src, "");
+    assert.equal(h.audio.loadCalls, 0);
+    assert.equal(h.play.disabled, true);
+    await h.clickPlay();
+    assert.equal(h.contexts.length, 0);
+    assert.equal(h.audio.playCalls, 0);
+  }
+});
+
+test("private fixture duplicate clicks start one source and a later click stops it", async () => {
+  const h = await createHarness();
+  const gate = deferred();
+  h.setDecodeGate(gate.promise);
+  h.dispatch(privateFixtureRecord());
+
+  const first = h.clickPlay();
+  const duplicate = h.clickPlay();
+  assert.equal(h.contexts.length, 1);
+  gate.resolve();
+  await Promise.all([first, duplicate]);
+
+  assert.equal(h.contexts.length, 1);
+  assert.equal(h.contexts[0].sources.length, 1);
+  assert.equal(h.contexts[0].sources[0].startCalls, 1);
+
+  await h.clickPlay();
+  assert.equal(h.contexts.length, 1);
+  assert.equal(h.contexts[0].sources[0].stopCalls, 1);
+  assert.equal(h.contexts[0].closeCalls, 1);
 });
 
 test("bad, oversized, URL-bearing and wrong-source generated records are rejected", async () => {
@@ -365,7 +460,7 @@ test("iPhone fake harness records gesture, context, resume, decode and start wit
   assert.equal(h.contexts.length, 1);
   assert.equal(h.contexts[0].sources.length, 1);
   assert.equal(h.contexts[0].sources[0].startCalls, 1);
-  assert.match(h.diagnostic.textContent, /s1-20261023/);
+  assert.match(h.diagnostic.textContent, /s1-ios-media4-20261026/);
   assert.match(h.diagnostic.textContent, /宿主 iOS/);
   assert.match(h.diagnostic.textContent, /路径 web-audio-generated/);
   assert.match(h.diagnostic.textContent, /手势 direct-click/);
