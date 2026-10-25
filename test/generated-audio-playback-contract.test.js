@@ -149,7 +149,7 @@ test("the shared player routes generated records to gesture-gated Web Audio and 
   const generatedBranch = ui.match(/if\(next\.source==="minimax"\)\{([\s\S]*?)return;\s*\}/)?.[1];
   assert.ok(generatedBranch);
   assert.match(generatedBranch, /validateGeneratedBridgeRecord\(next\)/);
-  assert.match(generatedBranch, /generatedBridge=\{generation/);
+  assert.match(generatedBranch, /bridgeAudio=\{generation/);
   assert.doesNotMatch(generatedBranch, /inlineAudioUrl|audio\.src|data:audio/);
 
   assert.match(ui, /next\.source==="private-fixture"/);
@@ -159,17 +159,18 @@ test("the shared player routes generated records to gesture-gated Web Audio and 
   assert.match(ui, /data:audio\/wav;base64,/);
   assert.match(ui, /base64\.length>3_000_000/);
   assert.match(ui, /raw\.length>2\*1024\*1024/);
-  assert.match(ui, /loadPhase=next\.source==="private-fixture"\?"private-inline":"other-source"/);
+  assert.match(ui, /loadPhase="private-bridge-ready"/);
+  assert.doesNotMatch(ui, /private-inline/);
   assert.doesNotMatch(ui, /generated-inline/);
   assert.doesNotMatch(ui, /next\.source==="minimax"[\s\S]{0,240}?target=next\.audioUrl/);
   assert.doesNotMatch(ui, /api\.minimaxi\.com|MINIMAX_API_KEY|\bfetch\s*\(/);
   assert.doesNotMatch(ui, /else if\(next\.source==="minimax"/);
 
-  assert.match(ui, /async function toggleGeneratedBridgePlayback\(\)/);
+  assert.match(ui, /async function toggleBridgePlayback\(\)/);
   assert.match(ui, /window\.AudioContext\|\|window\.webkitAudioContext/);
   assert.match(ui, /context\.decodeAudioData\(copy\.buffer\)/);
-  assert.match(ui, /generatedPlayback\?\.starting\)return/);
-  assert.match(ui, /generatedPlayback\?\.playing\)\{/);
+  assert.match(ui, /bridgePlayback\?\.starting\)return/);
+  assert.match(ui, /bridgePlayback\?\.playing\)\{/);
   assert.match(ui, /const unlocked=context\.resume\(\)/);
 
   assert.match(ui, /const generation=\+\+mediaLoadGeneration/);
