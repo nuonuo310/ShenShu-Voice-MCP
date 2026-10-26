@@ -445,6 +445,79 @@ function makeUiHarness(html, href, { contextStateAfterResume = "running" } = {})
   return { elements, audio, contexts, posted, click, findToolCall, resolveRpc };
 }
 
+async function resolveUiInitialization(harness, result) {
+  const initialize = harness.posted.find((message) => message.method === "ui/initialize");
+  assert.ok(initialize);
+  harness.resolveRpc(initialize.id, result);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(
+    harness.posted.some((message) => message.method === "ui/notifications/initialized"),
+  );
+}
+
+test("authenticated UI exposes only a fixed host audio capability boolean", async () => {
+  const surface = await readOAuthSurface();
+  const harness = makeUiHarness(
+    surface.html,
+    "https://host.invalid/ui/private-fixture-bubble-v2.html",
+  );
+
+  await resolveUiInitialization(harness, {
+    protocolVersion: "2026-01-26",
+    hostInfo: {
+      name: "SENSITIVE_HOST_NAME",
+      version: "SENSITIVE_HOST_VERSION",
+      websiteUrl: "https://SENSITIVE_HOST.invalid/",
+    },
+    hostCapabilities: { message: { audio: {} }, sampling: { tools: {} } },
+    hostContext: { toolInfo: { id: "SENSITIVE_TOOL_ID" } },
+  });
+
+  const capability = harness.elements.capability.textContent;
+  assert.match(capability, /宿主音频消息能力：已宣告（未发送音频）/);
+  assert.doesNotMatch(capability, /SENSITIVE|sensitive|https:\/\//);
+  assert.equal(harness.posted.some((message) => message.method === "ui/message"), false);
+  assert.equal(harness.audio.playCalls, 0);
+  assert.equal(harness.contexts.length, 0);
+});
+
+test("authenticated UI reports an absent host audio message marker without implying playback", async () => {
+  const surface = await readOAuthSurface();
+  const harness = makeUiHarness(
+    surface.html,
+    "https://host.invalid/ui/private-fixture-bubble-v2.html",
+  );
+
+  await resolveUiInitialization(harness, {
+    protocolVersion: "2026-01-26",
+    hostInfo: { name: "offline-host", version: "1" },
+    hostCapabilities: { message: {} },
+  });
+
+  assert.match(harness.elements.capability.textContent, /宿主音频消息能力：未宣告（未发送音频）/);
+  assert.equal(harness.posted.some((message) => message.method === "ui/message"), false);
+  assert.equal(harness.audio.playCalls, 0);
+  assert.equal(harness.contexts.length, 0);
+});
+
+test("public UI never renders the host audio message capability", async () => {
+  const publicHtml = await readFile(new URL("../ui/mcp-bubble.html", import.meta.url), "utf8");
+  assert.match(publicHtml, /hostCapabilities\?\.message\?\.audio/);
+  assert.doesNotMatch(publicHtml, /ui\/message|sendMessage|hostInfo/);
+
+  const harness = makeUiHarness(publicHtml, "https://host.invalid/ui/voice-bubble-v1.html");
+  await resolveUiInitialization(harness, {
+    protocolVersion: "2026-01-26",
+    hostInfo: { name: "offline-host", version: "1" },
+    hostCapabilities: { message: { audio: {} } },
+  });
+
+  assert.doesNotMatch(harness.elements.capability.textContent, /宿主音频消息能力/);
+  assert.equal(harness.posted.some((message) => message.method === "ui/message"), false);
+  assert.equal(harness.audio.playCalls, 0);
+  assert.equal(harness.contexts.length, 0);
+});
+
 test("OAuth-only UI button posts tools/call and reaches gesture-gated Web Audio", async () => {
   const surface = await readOAuthSurface();
   const harness = makeUiHarness(

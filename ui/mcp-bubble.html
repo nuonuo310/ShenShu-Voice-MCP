@@ -60,18 +60,38 @@ const heights=[9,17,26,14,22,33,18,12,29,36,19,13,23,31,16,10,22,35,25,13,19,30,
 const $=id=>document.getElementById(id);
 const wave=$("wave"),audio=$("audio"),play=$("play");
 wave.innerHTML=heights.map(h=>`<i style="--h:${h}px"></i>`).join("");
+const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");
 let record=null,frame=0,rpcId=0,loadPhase="idle",mediaLoadGeneration=0;
 let bridgeAudio=null,bridgePlayback=null,bridgePlaybackToken=0;
 const pending=new Map();
 // Read-only, nonsecret runtime media capability report. Does not play audio or fetch URLs.
+let mediaCapabilityText="音频能力：检测不可用";
+let hostAudioMessageCapability=null;
+function renderMediaCapability(){
+  let text=mediaCapabilityText;
+  if(isOAuthBubble&&hostAudioMessageCapability!==null)
+    text+=" · 宿主音频消息能力："+(hostAudioMessageCapability?"已宣告":"未宣告")+"（未发送音频）";
+  $("capability").textContent=text;
+}
 function reportMediaCapability(){
   try{
     const capability=audio.canPlayType("audio/wav")||"none";
     const blobAvailable=typeof Blob==="function";
-    $("capability").textContent="音频能力：WAV "+capability+" · Blob API "+(blobAvailable?"存在":"不可用")+"（未测试地址创建或播放）";
-  }catch{$("capability").textContent="音频能力：检测不可用";}
+    mediaCapabilityText="音频能力：WAV "+capability+" · Blob API "+(blobAvailable?"存在":"不可用")+"（未测试地址创建或播放）";
+  }catch{mediaCapabilityText="音频能力：检测不可用";}
+  renderMediaCapability();
 }
 reportMediaCapability();
+function reportHostAudioMessageCapability(hostCapabilities){
+  if(!isOAuthBubble)return;
+  let advertised=false;
+  try{
+    const audioCapability=hostCapabilities?.message?.audio;
+    advertised=audioCapability!==undefined&&audioCapability!==null&&audioCapability!==false;
+  }catch{}
+  hostAudioMessageCapability=advertised;
+  renderMediaCapability();
+}
 
 const fmt=s=>Number.isFinite(s)?`${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,"0")}`:"0:00";
 const VOICE_UI_DIAGNOSTIC_VERSION="s1-ios-media4-20261026";
@@ -359,13 +379,13 @@ window.addEventListener("message",event=>{
 },{passive:true});
 (async()=>{
   try{
-    await request("ui/initialize",{appInfo:{name:"shenshu-voice-bubble",version:"0.2.0"},appCapabilities:{},protocolVersion:"2026-01-26"});
+    const initialized=await request("ui/initialize",{appInfo:{name:"shenshu-voice-bubble",version:"0.2.0"},appCapabilities:{},protocolVersion:"2026-01-26"});
+    reportHostAudioMessageCapability(initialized?.hostCapabilities);
     notify("ui/notifications/initialized",{});
   }catch{$("status").textContent="MCP Apps UI 初始化失败。"}
 })();
 const bridgeProbe=$("bridge-probe");
 // Only OAuth private-fixture resource may opt in; public /mcp bubble remains unchanged.
-const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");
 if(isOAuthBubble){bridgeProbe.hidden=false;}
 bridgeProbe.addEventListener("click",async()=>{
   if(!isOAuthBubble)return;
