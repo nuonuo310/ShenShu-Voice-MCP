@@ -34,6 +34,7 @@ const SESSION_TTL_SECONDS=3600;
 const MAX_COOKIE_BYTES=4096;
 const MAX_AUTH_RESPONSE_BYTES=65536;
 const MAX_ACCESS_TOKEN_BYTES=12000;
+const AUTH_STATE_PATTERN=/^[A-Za-z0-9_-]{43}$/;
 const PLAYER_PATHS=new Set([
   PRIVATE_PLAYER_PATH,
   PRIVATE_PLAYER_LOGIN_PATH,
@@ -126,10 +127,11 @@ function openSignedCookie(raw,secret) {
 }
 
 function safeEqualText(a,b) {
-  if(typeof a!=="string"||typeof b!=="string"||a.length!==b.length) return false;
+  if(typeof a!=="string"||typeof b!=="string"||
+     !AUTH_STATE_PATTERN.test(a)||!AUTH_STATE_PATTERN.test(b)) return false;
   const left=Buffer.from(a,"ascii");
   const right=Buffer.from(b,"ascii");
-  return left.length===right.length&&timingSafeEqual(left,right);
+  return timingSafeEqual(left,right);
 }
 
 function nowSeconds(clock) {
@@ -199,13 +201,53 @@ function authFetchOptions() {
   return {redirect:"error",signal};
 }
 
-async function readBoundedJson(response,limit) {
-  if(!response||typeof response.text!=="function"||
-     (response.status!==undefined&&response.status!==200)||response.ok===false)
+function declaredContentLength(response) {
+  if(typeof response?.headers?.get!=="function") return null;
+  const raw=response.headers.get("content-length");
+  if(raw==null) return null;
+  if(typeof raw!=="string"||!/^[0-9]{1,12}$/.test(raw))
     throw Error("auth_response_invalid");
+  return Number(raw);
+}
+
+async function readBoundedText(response,limit) {
+  const declared=declaredContentLength(response);
+  if(declared!==null&&declared>limit) throw Error("auth_response_invalid");
+  if(response.body&&typeof response.body.getReader==="function") {
+    const reader=response.body.getReader();
+    const chunks=[];
+    let total=0;
+    try {
+      while(true) {
+        const item=await reader.read();
+        if(!item||typeof item!=="object") throw Error("auth_response_invalid");
+        if(item.done) break;
+        const value=item.value;
+        if(!(value instanceof Uint8Array)) throw Error("auth_response_invalid");
+        total+=value.byteLength;
+        if(total>limit) throw Error("auth_response_invalid");
+        chunks.push(Buffer.from(value));
+      }
+    } catch (error) {
+      try {await reader.cancel("bounded_response_failed");} catch {}
+      throw error;
+    } finally {
+      try {reader.releaseLock();} catch {}
+    }
+    return Buffer.concat(chunks,total).toString("utf8");
+  }
+  if(typeof response.text!=="function") throw Error("auth_response_invalid");
   const text=await response.text();
   if(typeof text!=="string"||Buffer.byteLength(text,"utf8")>limit)
     throw Error("auth_response_invalid");
+  return text;
+}
+
+async function readBoundedJson(response,limit) {
+  if(!response||(response.status!==undefined&&response.status!==200)||
+     response.ok===false)
+    throw Error("auth_response_invalid");
+  const text=await readBoundedText(response,limit);
   let value;
   try {value=JSON.parse(text);} catch {throw Error("auth_response_invalid");}
   if(!value||typeof value!=="object"||Array.isArray(value))

@@ -194,15 +194,28 @@ test("login redirect uses exact Auth0 endpoints, PKCE S256 and a secure state co
   assert.doesNotMatch(login.response.headers.Location,/access_token|client_secret/i);
 });
 
-function fakeAuthFetch({token={access_token:"fixture-access-token-123",token_type:"Bearer"},user={sub:SUBJECT},tokenText,userText}={}) {
+function responseWithBody(text,{contentLength=null,body}={}) {
+  const bytes=new TextEncoder().encode(text);
+  return {
+    status:200,
+    ok:true,
+    headers:{get(name){return name.toLowerCase()==="content-length"?contentLength:null;}},
+    body:body??new ReadableStream({start(controller){controller.enqueue(bytes);controller.close();}}),
+  };
+}
+
+function fakeAuthFetch({
+  token={access_token:"fixture-access-token-123",token_type:"Bearer"},
+  user={sub:SUBJECT},tokenText,userText,tokenResponse,userResponse,
+}={}) {
   const calls=[];
   async function fetchImpl(url,options={}) {
     calls.push({url,options});
     if(url===TOKEN_URL) {
-      return {status:200,ok:true,text:async()=>tokenText??JSON.stringify(token)};
+      return tokenResponse??responseWithBody(tokenText??JSON.stringify(token));
     }
     if(url===USERINFO_URL) {
-      return {status:200,ok:true,text:async()=>userText??JSON.stringify(user)};
+      return userResponse??responseWithBody(userText??JSON.stringify(user));
     }
     throw Error("unexpected_auth_url");
   }
@@ -360,6 +373,64 @@ test("callback rejects missing/mismatched state, duplicate parameters and bad Au
   );
   assert.equal(network.headers.Location,PRIVATE_PLAYER_PATH+"?login=failed");
   assert.equal(findCookie(setCookies(network.headers),PRIVATE_PLAYER_SESSION_COOKIE),undefined);
+});
+
+test("callback rejects non-ASCII aliases of the exact OAuth state", async () => {
+  const login=await begin();
+  assert.match(login.state,/^A/);
+  const alias="\u0141"+login.state.slice(1);
+  assert.equal(alias.length,login.state.length);
+  assert.deepEqual(Buffer.from(alias,"ascii"),Buffer.from(login.state,"ascii"));
+  const auth=fakeAuthFetch();
+  const response=await invoke(
+    PRIVATE_PLAYER_CALLBACK_PATH+"?code=good-code&state="+encodeURIComponent(alias),
+    {headers:{cookie:login.loginCookie},fetchImpl:auth.fetchImpl},
+  );
+  assert.equal(response.status,303);
+  assert.equal(response.headers.Location,PRIVATE_PLAYER_PATH+"?login=failed");
+  assert.equal(auth.calls.length,0);
+  assert.equal(findCookie(setCookies(response.headers),PRIVATE_PLAYER_SESSION_COOKIE),undefined);
+});
+
+test("Auth0 response bodies are bounded while streaming and failures cancel the body", async () => {
+  const cases=[
+    {name:"declared_oversize",contentLength:"65537",
+      chunks:[new Uint8Array([123])],reads:0,cancels:0,released:0},
+    {name:"stream_oversize",contentLength:null,
+      chunks:[new Uint8Array(32768),new Uint8Array(32768),new Uint8Array(1)],
+      reads:3,cancels:1,released:1},
+    {name:"malformed_length",contentLength:"not-a-number",
+      chunks:[new Uint8Array([123])],reads:0,cancels:0,released:0},
+  ];
+  for(const item of cases) {
+    const login=await begin();
+    const state={reads:0,cancels:0,released:0};
+    const remaining=[...item.chunks];
+    const tokenResponse=responseWithBody("",{
+      contentLength:item.contentLength,
+      body:{getReader(){return {
+        async read(){
+          state.reads++;
+          if(remaining.length===0) return {done:true};
+          return {done:false,value:remaining.shift()};
+        },
+        async cancel(){state.cancels++;},
+        releaseLock(){state.released++;},
+      };}},
+    });
+    const auth=fakeAuthFetch({tokenResponse});
+    const response=await invoke(
+      PRIVATE_PLAYER_CALLBACK_PATH+"?code=good-code&state="+login.state,
+      {headers:{cookie:login.loginCookie},fetchImpl:auth.fetchImpl},
+    );
+    assert.equal(response.status,303,item.name);
+    assert.equal(response.headers.Location,PRIVATE_PLAYER_PATH+"?login=failed",item.name);
+    assert.equal(auth.calls.length,1,item.name);
+    assert.equal(state.reads,item.reads,item.name);
+    assert.equal(state.cancels,item.cancels,item.name);
+    assert.equal(state.released,item.released,item.name);
+    assert.equal(findCookie(setCookies(response.headers),PRIVATE_PLAYER_SESSION_COOKIE),undefined,item.name);
+  }
 });
 
 test("invalid or non-WAV loaded bytes fail closed without a partial audio response", async () => {
