@@ -11,6 +11,7 @@ import { z } from "zod";
 import { checkText } from "./src/contract.js";
 import { makeInlineToneFixture } from "./src/inline-fixture.js";
 import { handleProtectedResourceShell } from "./src/protected-resource-shell.js";
+import { handlePrivateWebPlayer } from "./src/private-web-player.js";
 import { createD1AdmissionDryRun } from "./src/d1-admission-dry-run.js";
 
 const MCP_PATH = "/mcp";
@@ -179,6 +180,9 @@ export const httpServer = createHttpServer(async (req, res) => {
     return;
   }
   const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+
+  // Standalone staging player. Disabled by default and never mounted in production mode.
+  if (await handlePrivateWebPlayer(req, res, url)) return;
 
   // Staging auth resource: denies ALL paid calls, never creates an MCP session.
   if (await handleProtectedResourceShell(req, res, url.pathname)) return;
