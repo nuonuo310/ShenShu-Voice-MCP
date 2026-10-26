@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>沈述 · 私有语音播放</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#efe1cf;background:#17130f;color-scheme:dark}
+*{box-sizing:border-box}
+body{min-height:100vh;margin:0;padding:max(24px,env(safe-area-inset-top)) 18px max(24px,env(safe-area-inset-bottom));background:radial-gradient(circle at 50% 0%,#30251b 0,#17130f 55%);display:grid;place-items:center}
+main{width:min(100%,430px);padding:24px;border:1px solid rgba(222,191,151,.25);border-radius:24px;background:linear-gradient(145deg,rgba(93,72,53,.34),rgba(35,29,24,.88));box-shadow:0 24px 70px rgba(0,0,0,.32),inset 0 1px rgba(255,239,213,.06)}
+.kicker{margin:0 0 10px;font-size:11px;letter-spacing:.2em;color:#cbb18f}
+h1{margin:0;font-size:25px;font-weight:600;letter-spacing:.02em}
+.intro{margin:13px 0 20px;font-size:14px;line-height:1.65;color:#cdbca8}
+.actions{display:grid;gap:10px}
+a,button{min-height:48px;border-radius:15px;font:inherit;font-size:15px;display:flex;align-items:center;justify-content:center;text-decoration:none}
+a{border:1px solid rgba(241,213,174,.42);color:#f6e8d4;background:rgba(121,93,67,.22)}
+button{border:1px solid rgba(241,213,174,.65);color:#2b1d13;background:linear-gradient(135deg,#f0d5ad,#c69a6b);font-weight:600}
+button:active,a:active{transform:translateY(1px)}
+audio{width:100%;margin-top:18px;accent-color:#d6b184}
+.status{min-height:22px;margin:12px 0 0;font-size:13px;line-height:1.55;color:#b9a58f}
+.note{margin:16px 0 0;padding-top:14px;border-top:1px solid rgba(222,191,151,.15);font-size:11px;line-height:1.6;color:#9d8a76}
+</style>
+</head>
+<body>
+<main>
+  <p class="kicker">SHEN · PRIVATE PLAYER</p>
+  <h1>沈述 · 私有语音播放</h1>
+  <p class="intro">这里只提供当前认证会话可访问的固定非计费 WAV。不会自动播放，也不调用 MiniMax。</p>
+  <div class="actions">
+    <a href="/player/login">登录或重新登录</a>
+    <button id="load" type="button">载入授权音频</button>
+  </div>
+  <audio id="audio" controls preload="none" playsinline></audio>
+  <p class="status" id="status" role="status" aria-live="polite">尚未载入音频。</p>
+  <p class="note">音频通过同源认证会话读取，不把 bearer、token 或能力凭据放在 URL 中。P1 使用固定测试音，不是沈述真实语音。</p>
+</main>
+<script>
+const audio=document.getElementById("audio");
+const load=document.getElementById("load");
+const status=document.getElementById("status");
+load.addEventListener("click",()=>{
+  audio.pause();
+  audio.removeAttribute("src");
+  audio.load();
+  status.textContent="正在请求授权音频…";
+  audio.src="/player/audio";
+  audio.load();
+});
+audio.addEventListener("loadedmetadata",()=>{
+  status.textContent="授权音频已就绪；请点击播放。";
+});
+audio.addEventListener("play",()=>{
+  status.textContent="正在播放固定测试音频。";
+});
+audio.addEventListener("pause",()=>{
+  if(!audio.ended&&audio.currentTime>0)status.textContent="播放已暂停。";
+});
+audio.addEventListener("ended",()=>{
+  status.textContent="播放结束。";
+});
+audio.addEventListener("error",()=>{
+  status.textContent="无法载入授权音频；请先登录或重新登录。";
+});
+</script>
+</body>
+</html>
