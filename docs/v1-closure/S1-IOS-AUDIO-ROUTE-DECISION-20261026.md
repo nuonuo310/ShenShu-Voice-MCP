@@ -262,11 +262,15 @@ authority tree. `git diff --check` is required before the report commit.
 |---|---:|
 | Deployments / Render or Auth0 changes | 0 |
 | Cloudflare, Worker, route or D1 requests | 0 |
-| MiniMax/provider or real secret reads | 0 |
+| MiniMax/provider or application secret reads | 0 |
 | Live MCP/connector invocations | 0 |
 | Real iPhone tests or retries | 0 |
 | Manual Actions dispatches or merges | 0 |
 | Other Asteria repositories modified | 0 |
+
+A preconfigured GitHub workflow credential was used in-process only for the
+authorized branch push and Draft PR API workflow. It was not printed, logged,
+persisted in the repository, passed to tests, or included in evidence.
 
 **COMPLETE for the offline route-decision scope. The next device check remains
 separately authorized and STOP-bounded.**
