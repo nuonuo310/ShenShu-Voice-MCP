@@ -372,6 +372,25 @@ async function serveAudio(req,res,config,{clock,loadAudio}) {
   res.end(req.method==="HEAD"?undefined:audio);
 }
 
+/**
+ * Read the existing first-party player session without exposing or retaining
+ * the Auth0 access token. The offline confirmation candidate uses this same
+ * parser so player and P1 routes cannot drift on cookie semantics.
+ */
+export function readPrivatePlayerSession(req,{sessionSecret,clock=Date.now}={}) {
+  if(!validSessionSecret(sessionSecret)||typeof clock!=="function") return null;
+  let now;
+  try {now=nowSeconds(clock);} catch {return null;}
+  const cookies=parseCookies(req?.headers?.cookie);
+  const session=parseSessionCookie(cookies.get(PRIVATE_PLAYER_SESSION_COOKIE),
+    sessionSecret,now);
+  if(!session) return null;
+  return Object.freeze({
+    principal:session.subject,
+    expiresAt:session.expiry*1000,
+  });
+}
+
 export function isPrivatePlayerPath(pathname) {
   return PLAYER_PATHS.has(pathname);
 }
