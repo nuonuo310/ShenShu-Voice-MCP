@@ -4,7 +4,7 @@ Date: 2026-10-27
 
 ## Receipt
 
-`COMPLETE` for the bounded offline candidate. Real paid enablement remains `BLOCKED` on independent live identity, D1 atomicity and browser-gesture qualification.
+`COMPLETE` for the bounded offline candidate. Draft PR publication is `BLOCKED` by the current sandbox network and Windows credential-store boundary. Real paid enablement also remains `BLOCKED` on independent live identity, D1 atomicity and browser-gesture qualification.
 
 Voice V1 remains **2/9**. Paid P2 remains OFF. B1–B4 remain OPEN.
 
@@ -90,7 +90,13 @@ Voice V1 remains **2/9**. Paid P2 remains OFF. B1–B4 remain OPEN.
 - `node test/smoke-server.mjs`: PASS for MCP initialize, tools/list, fixture calls and fail-closed paid entry.
 - `node --check` for `server.js`, `src/minimax-adapter.js`, the new module and its focused test: PASS.
 - `git diff --check`: PASS.
-- Final PR CI is recorded in the Draft PR after the normal pull-request workflow; no manual Actions.
+- Local Node 24 verification is complete. At report time there is no remote branch, Draft PR number or remote CI run: `CODEX_SANDBOX_NETWORK_DISABLED=1` blocked direct network access, and the sandboxed process could not read the existing Windows Credential Manager entry needed for authenticated push. No manual Actions were triggered.
+
+## Delivery blocker
+
+The implementation and report commits exist only in the isolated local worktree. An authenticated branch push and API/browser Draft PR creation were attempted through the existing network tunnel, but the sandbox cannot access the required Windows credential store. Read-only anonymous GitHub access through the tunnel succeeded; authenticated publication did not.
+
+No remote branch, PR, remote CI result or merge is claimed. The sole immediate next action is to allow one network-enabled, credential-authorized push and Draft PR creation from this exact local HEAD; deployment and cloud mutation remain prohibited.
 
 ## BLOCKED live gates
 
@@ -111,6 +117,6 @@ These gates mean this commit is an executable offline candidate, not evidence of
 - Deployments, cloud or schema modifications, credential generation, provider calls, manual Actions and merges: **0**.
 - Voice V1 remains **2/9**; paid P2 remains **OFF**.
 
-## Single next decision
+## Single next action
 
-Authorize one bounded staging qualification, with MiniMax and billing disabled, that proves (a) an additive `pending_confirmation` D1 schema, (b) atomic pending/claim/terminal compare-and-set, and (c) real Auth0 player-to-MCP canonical principal continuity. Until that decision and evidence exist, live paid enablement is `BLOCKED`.
+Allow one network-enabled, credential-authorized publication of local HEAD `docs/voice-v1-p2-player-explicit-confirm` as a stacked Draft PR based on the PR #143 head branch `docs/voice-v1-p2-player-confirm-only-20261027`, then let the normal pull-request CI run. This action must not deploy or mutate D1, Cloudflare, Render, Auth0, Qiniu, MiniMax or MCP. Live paid qualification remains separately `BLOCKED` until this delivery and later Total Control authorization exist.
