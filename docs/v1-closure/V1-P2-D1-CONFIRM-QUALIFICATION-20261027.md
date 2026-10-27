@@ -317,8 +317,9 @@ Strict Voice V1 remains **2/9**. Paid P2 remains OFF. B1-B4 remain OPEN.
 The bounded offline D1 confirmation candidate is COMPLETE and locally verified.
 The immediate single next action is to publish this exact local HEAD through a
 normal, network-enabled, credential-authorized Windows PowerShell session as a
-stacked Draft PR based on PR #144 HEAD
-`72c6a58be308544e3b5388632120453efb2da7e2`, then let normal `pull_request` CI
+stacked Draft PR based on the PR #145 head branch (authority commit
+`8c3ede3e3f3e2ef4d8387436019d3dd3d2a4a22d`; its parent baseline is
+`72c6a58be308544e3b5388632120453efb2da7e2`), then let normal `pull_request` CI
 run. Do not deploy, mutate D1, change Render/Auth0, call MiniMax or merge during
 publication.
 
