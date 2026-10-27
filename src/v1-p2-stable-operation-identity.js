@@ -84,7 +84,7 @@ function defaultOperationId() {
   return "op_" + randomUUID().replaceAll("-", "");
 }
 
-function validRecord(record) {
+export function validRecord(record) {
   let safeText = null;
   try {
     safeText = checkText(record?.text);
@@ -114,6 +114,7 @@ function validDependencies({
   resolveVerifiedPrincipal,
   operationStore,
   paidStore,
+  authorizePaidAttempt,
   synthesize,
   privateResultStore,
   voiceId,
@@ -123,14 +124,16 @@ function validDependencies({
   makeOperationId,
   operationTtlMs,
 }) {
+  const validPaidStore = paidStore &&
+    typeof paidStore.reserveAtomic === "function" &&
+    typeof paidStore.issue === "function" &&
+    typeof paidStore.consume === "function";
+  const hasAuthorizePaidAttempt = authorizePaidAttempt != null;
   return typeof resolveVerifiedPrincipal === "function" &&
     operationStore &&
     ["createPending", "get", "claim", "markProviderPending", "markCompleted", "markUnknown"]
       .every(name => typeof operationStore[name] === "function") &&
-    paidStore &&
-    typeof paidStore.reserveAtomic === "function" &&
-    typeof paidStore.issue === "function" &&
-    typeof paidStore.consume === "function" &&
+    (hasAuthorizePaidAttempt ? typeof authorizePaidAttempt === "function" : validPaidStore) &&
     typeof synthesize === "function" &&
     privateResultStore &&
     typeof privateResultStore.save === "function" &&
@@ -180,6 +183,7 @@ export function createV1P2StableOperationBroker(options = {}) {
     resolveVerifiedPrincipal,
     operationStore,
     paidStore,
+    authorizePaidAttempt = null,
     synthesize,
     privateResultStore,
     voiceId,
@@ -194,6 +198,7 @@ export function createV1P2StableOperationBroker(options = {}) {
     resolveVerifiedPrincipal,
     operationStore,
     paidStore,
+    authorizePaidAttempt,
     synthesize,
     privateResultStore,
     voiceId,
@@ -424,6 +429,20 @@ export function createV1P2StableOperationBroker(options = {}) {
             return Object.freeze({ verified: true, subject: actual });
           },
           store: paidStore,
+          authorize: authorizePaidAttempt
+            ? async ({ textBytes }) => {
+              const admission = await authorizePaidAttempt({
+                principal,
+                handle: input.handle,
+                operationId,
+                textDigest: digest,
+                textBytes,
+                now: nowMs(clock),
+              });
+              observedPrincipal = admission?.principal ?? null;
+              return admission;
+            }
+            : undefined,
           synthesize,
           voiceId: fixedVoiceId,
           maximumDailyCalls,
