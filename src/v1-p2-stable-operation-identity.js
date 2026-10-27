@@ -32,6 +32,7 @@ import {
   createV1OfflinePaidPipeline,
   V1_OFFLINE_MAX_DAILY_CALLS,
 } from "./v1-offline-paid-pipeline.js";
+import { STAGING_RESOURCE_ORIGIN } from "./protected-resource-identity.js";
 
 export const P2_OPERATION_ACTION = "generate_shenshu_voice";
 export const P2_OPERATION_DEFAULT_TTL_MS = 5 * 60 * 1000;
@@ -84,15 +85,24 @@ function defaultOperationId() {
 }
 
 function validRecord(record) {
+  let safeText = null;
+  try {
+    safeText = checkText(record?.text);
+  } catch {}
   return record && typeof record === "object" && !Array.isArray(record) &&
     record.version === 1 &&
     record.action === P2_OPERATION_ACTION &&
     HANDLE_PATTERN.test(record.handle ?? "") &&
     OPERATION_ID_PATTERN.test(record.operationId ?? "") &&
     typeof record.principal === "string" &&
+    safeText === record.text &&
     DIGEST_PATTERN.test(record.textDigest ?? "") &&
     Number.isSafeInteger(record.textBytes) &&
     record.textBytes >= 1 && record.textBytes <= 800 &&
+    Buffer.byteLength(record.text, "utf8") === record.textBytes &&
+    createHash("sha256").update(record.text, "utf8").digest("base64url") ===
+      record.textDigest &&
+    record.origin === STAGING_RESOURCE_ORIGIN &&
     Number.isSafeInteger(record.issuedAt) && record.issuedAt >= 0 &&
     Number.isSafeInteger(record.expiresAt) &&
     record.expiresAt > record.issuedAt &&
@@ -271,8 +281,13 @@ export function createV1P2StableOperationBroker(options = {}) {
         handle,
         operationId,
         principal,
+        // The standalone player must show the exact proposal before consent.
+        // MCP responses never include this field. A durable adapter must define
+        // its private-at-rest representation before live enablement.
+        text: safeText,
         textDigest: textDigest(safeText),
         textBytes: Buffer.byteLength(safeText, "utf8"),
+        origin: STAGING_RESOURCE_ORIGIN,
         state: P2_OPERATION_STATES.PENDING_CONFIRMATION,
         issuedAt,
         expiresAt: issuedAt + operationTtlMs,
@@ -493,6 +508,22 @@ export function createInMemoryStableOperationStoreForTest() {
     async get({ principal, handle } = {}) {
       if (typeof principal !== "string" || !HANDLE_PATTERN.test(handle ?? "")) return null;
       return copy(records.get(key(principal, handle)));
+    },
+
+    async listPending({ principal, now, limit = 10 } = {}) {
+      if (typeof principal !== "string" ||
+          !Number.isSafeInteger(now) || now < 0 ||
+          !Number.isSafeInteger(limit) || limit < 1 || limit > 20) {
+        return [];
+      }
+      return [...records.values()]
+        .filter(record => record.principal === principal &&
+          record.state === P2_OPERATION_STATES.PENDING_CONFIRMATION &&
+          record.expiresAt > now)
+        .sort((left, right) => right.issuedAt - left.issuedAt ||
+          left.handle.localeCompare(right.handle))
+        .slice(0, limit)
+        .map(copy);
     },
 
     async claim({ principal, handle, textDigest: digest, textBytes, now } = {}) {
