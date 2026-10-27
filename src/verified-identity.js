@@ -5,7 +5,8 @@
  * RS256 JWT only. This is a resource-server verification primitive, NOT OAuth
  * login, key discovery or a deployed identity provider.
  */
-import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
+import { createPublicKey, verify as cryptoVerify } from "node:crypto";
+import { deriveCanonicalPrincipal } from "./canonical-principal.js";
 
 const b64url = /^[A-Za-z0-9_-]+$/;
 function decode(part) {
@@ -71,8 +72,8 @@ export function createVerifiedIdentityResolver({issuer,audience,publicJwks,clock
       ? claims.scope.split(" ").filter(Boolean)
       : (Array.isArray(claims.scp) && claims.scp.every(x=>typeof x==="string") ? claims.scp : []);
     if (!requiredScopes.every(scope=>granted.includes(scope))) throw Error("insufficient_scope");
-    // Stable opaque DB principal; valid with PaidVoiceGate's identifier pattern.
-    const subject=createHash("sha256").update(issuer+"\0"+claims.sub).digest("base64url").slice(0,43);
+    // Stable opaque DB principal shared with the standalone player session.
+    const subject=deriveCanonicalPrincipal({issuer,subject:claims.sub});
     return Object.freeze({verified:true,subject});
   };
 }

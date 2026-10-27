@@ -11,6 +11,7 @@ import {createHash,createHmac,randomBytes,timingSafeEqual} from "node:crypto";
 import {readFileSync} from "node:fs";
 import {validateWav} from "./contract.js";
 import {makeInlineToneFixture} from "./inline-fixture.js";
+import {deriveCanonicalPrincipal} from "./canonical-principal.js";
 import {
   AUTH0_ISSUER,
   STAGING_RESOURCE_ORIGIN,
@@ -255,10 +256,6 @@ async function readBoundedJson(response,limit) {
   return value;
 }
 
-function deriveSubject(issuer,sub) {
-  return createHash("sha256").update(issuer+"\0"+sub).digest("base64url").slice(0,43);
-}
-
 async function beginLogin(res,config,{clock,randomBytesImpl}) {
   const state=randomValue(randomBytesImpl);
   const verifier=randomValue(randomBytesImpl);
@@ -331,7 +328,7 @@ async function completeLogin(req,res,url,config,{
     if(typeof userinfo.sub!=="string"||userinfo.sub.length<1||userinfo.sub.length>512||
        /[\x00-\x1f\x7f]/.test(userinfo.sub))
       throw Error("auth_subject_invalid");
-    const subject=deriveSubject(config.issuer,userinfo.sub);
+    const subject=deriveCanonicalPrincipal({issuer:config.issuer,subject:userinfo.sub});
     const sessionPayload="v1."+String(now+SESSION_TTL_SECONDS)+"."+subject;
     const sessionCookie=cookieHeader(PRIVATE_PLAYER_SESSION_COOKIE,
       signCookie(sessionPayload,config.sessionSecret),SESSION_TTL_SECONDS);
