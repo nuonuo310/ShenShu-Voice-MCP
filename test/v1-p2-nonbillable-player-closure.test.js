@@ -628,3 +628,19 @@ test("the existing authenticated fixed WAV remains available and visible text is
       fixture.db.close();
     }
   });
+
+test("the closure receipt records the bounded evidence and remaining gates", async () => {
+  const doc = await readFile(
+    new URL("../docs/v1-closure/V1-P2-NONBILLABLE-MCP-PLAYER-CLOSURE-20261028.md", import.meta.url),
+    "utf8",
+  );
+  for (const marker of [
+    "COMPLETE",
+    "332 tests, 332 pass, 0 fail, 0 skipped, 0 todo",
+    "TOTAL CONTROL DECISION REQUIRED",
+    "2/9",
+    "40729121589",
+  ]) {
+    assert.match(doc, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
