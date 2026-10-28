@@ -34,6 +34,7 @@ export function createV1P2D1Confirmation({
   makeOperationId,
   operationTtlMs,
   maximumProposals = 10,
+  textSealer = null,
 } = {}) {
   if (typeof mcpResolveVerifiedPrincipal !== "function") {
     throw new Error("d1_confirmation_unavailable");
@@ -55,6 +56,7 @@ export function createV1P2D1Confirmation({
   const operationStore = createD1P2ConfirmationOperationStore({
     client,
     maximumDailyCalls,
+    ...(textSealer === null ? {} : { textSealer }),
   });
   const playerResolver = createV1P2PlayerSessionPrincipalResolver();
 

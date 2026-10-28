@@ -188,9 +188,10 @@ export function createShenShuHttpServer({
   // Trusted server-side injection only. The MCP/player bridge also requires an
   // explicit staging flag, the exact staging resource identity and the existing
   // player guard. No query, form, header or tool argument can enable it.
-  // This process intentionally does not synthesize a D1-backed closure: the
-  // 004 text column is plaintext today and no private-at-rest policy has been
-  // approved. A flag alone therefore leaves both surfaces disabled.
+  // This process still requires a trusted server-side closure injection. The
+  // separate staging sealed-composition candidate needs an explicit secret,
+  // D1 configuration and 005 schema preflight; a boolean flag alone can never
+  // fall back to plaintext or an in-memory store.
   const identity = resolveProtectedResourceIdentity(env);
   const activeClosure = nonbillableClosure !== null &&
     env.SHENSHU_NONBILLABLE_PLAYER_ENABLED === "1" &&

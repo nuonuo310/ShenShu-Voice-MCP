@@ -24,6 +24,11 @@ import {
   createV1P2NonbillablePlayerClosure,
 } from "../src/v1-p2-nonbillable-player-closure.js";
 import {
+  PRIVATE_TEXT_SEALED_MARKER,
+  createPrivateTextSealer,
+} from "../src/v1-p2-private-text-sealer.js";
+import { textDigest } from "../src/v1-p2-operation-contract.js";
+import {
   P2_PREPARE_TOOL,
   P2_STATUS_TOOL,
 } from "../src/v1-p2-nonbillable-mcp.js";
@@ -46,6 +51,9 @@ const sqliteSkip = typeof DatabaseSync === "function"
   : "node:sqlite requires Node 24";
 
 const SESSION_SECRET = "offline-nonbillable-player-secret-0123456789abcdef";
+const SEALING_MASTER_KEY = Buffer.from(
+  Array.from({ length: 32 }, (_, index) => index + 17),
+);
 const SUBJECT = "auth0|nonbillable-player-owner";
 const OTHER_SUBJECT = "auth0|nonbillable-player-other";
 const AUDIENCE = STAGING_RESOURCE_ORIGIN + "/paid-mcp";
@@ -119,6 +127,10 @@ const MIGRATIONS = [
   new URL("../db/d1/001_paid_voice_reservations.sql", import.meta.url),
   new URL("../db/d1/002_paid_voice_grants.sql", import.meta.url),
   new URL("../db/d1/004_paid_voice_confirmation_operations.sql", import.meta.url),
+  new URL(
+    "../db/d1/005_paid_voice_confirmation_private_text_sealing.sql",
+    import.meta.url,
+  ),
 ];
 
 async function makeStore({ failWrites = false, failReads = false } = {}) {
@@ -135,10 +147,14 @@ async function makeStore({ failWrites = false, failReads = false } = {}) {
       return db.prepare(statement).all(...params);
     },
   };
+  const textSealer = createPrivateTextSealer({
+    masterKey: SEALING_MASTER_KEY,
+  });
   return {
     db,
     client,
-    store: createD1P2ConfirmationOperationStore({ client }),
+    textSealer,
+    store: createD1P2ConfirmationOperationStore({ client, textSealer }),
   };
 }
 
@@ -263,7 +279,8 @@ test("signed MCP proposal appears only in the same owner's read-only player page
       ]);
       assert.ok(!tools.some(tool => /confirm|grant|quota|provider/i.test(tool.name)));
 
-      const text = "糯糯，这是一条只读预览提案。";
+      const text = "沈".repeat(266) + "ab";
+      assert.equal(Buffer.byteLength(text, "utf8"), 800);
       const prepared = await callTool(running.base, token, P2_PREPARE_TOOL, { text });
       assert.equal(prepared.result?.structuredContent?.status, "pending_confirmation");
       assert.equal(prepared.result?.structuredContent?.billable, false);
@@ -275,7 +292,7 @@ test("signed MCP proposal appears only in the same owner's read-only player page
       assert.equal(ownerPage.headers.get("cache-control"), "private, no-store, max-age=0");
       assert.match(ownerPage.headers.get("content-security-policy"), /form-action 'none'/);
       const ownerHtml = await ownerPage.text();
-      assert.match(ownerHtml, /糯糯，这是一条只读预览提案。/);
+      assert.ok(ownerHtml.includes(text));
       assert.match(ownerHtml, /尚未生成/);
       assert.match(ownerHtml, /只读预览/);
       assert.doesNotMatch(ownerHtml, /<form|<button|<script|http-equiv="refresh"|确认生成/i);
@@ -289,6 +306,16 @@ test("signed MCP proposal appears only in the same owner's read-only player page
         reservations: 0,
         grants: 0,
       });
+      const stored = fixture.db.prepare(
+        "SELECT text, text_digest, text_bytes, sealed_text " +
+        "FROM paid_voice_confirmation_operations",
+      ).get();
+      assert.equal(stored.text, PRIVATE_TEXT_SEALED_MARKER);
+      assert.equal(stored.text_bytes, 800);
+      assert.notEqual(stored.text_digest, textDigest(text));
+      assert.equal(stored.sealed_text.includes(text), false);
+      assert.equal(stored.sealed_text.includes(textDigest(text)), false);
+      assert.equal(JSON.stringify(stored).includes(text), false);
     } finally {
       await running.close();
       fixture.db.close();
@@ -477,7 +504,10 @@ test("new broker and pending handler over the same 004 store recover after resta
       await first.close();
     }
 
-    const restartedStore = createD1P2ConfirmationOperationStore({ client: fixture.client });
+    const restartedStore = createD1P2ConfirmationOperationStore({
+      client: fixture.client,
+      textSealer: fixture.textSealer,
+    });
     const secondClosure = makeClosure(restartedStore);
     const second = await startServer({ closure: secondClosure });
     try {

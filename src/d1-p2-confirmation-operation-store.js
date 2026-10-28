@@ -19,6 +19,9 @@ import {
   P2_OPERATION_STATES,
   validRecord as isValidP2OperationRecord,
 } from "./v1-p2-operation-contract.js";
+import {
+  PRIVATE_TEXT_SEALED_MARKER,
+} from "./v1-p2-private-text-sealer.js";
 import { V1_OFFLINE_MAX_DAILY_CALLS } from "./v1-offline-paid-pipeline.js";
 
 const HANDLE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -32,6 +35,8 @@ const COLUMNS = `
   origin, state, max_daily_calls, day_utc, request_id, grant_id,
   issued_at, expires_at, updated_at`;
 
+const SEALED_COLUMNS = `${COLUMNS}, sealed_text`;
+
 const INSERT_PENDING = `
 INSERT INTO paid_voice_confirmation_operations
   (principal, handle, operation_id, action, text, text_digest, text_bytes,
@@ -39,13 +44,36 @@ INSERT INTO paid_voice_confirmation_operations
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'pending_confirmation', ?10, ?11, ?10)
 RETURNING operation_id`.trim();
 
+const INSERT_PENDING_SEALED = `
+INSERT INTO paid_voice_confirmation_operations
+  (principal, handle, operation_id, action, text, text_digest, text_bytes,
+   origin, max_daily_calls, state, issued_at, expires_at, updated_at,
+   sealed_text)
+VALUES (?1, ?2, ?3, ?4, '${PRIVATE_TEXT_SEALED_MARKER}', ?5, ?6, ?7, ?8,
+        'pending_confirmation', ?9, ?10, ?9, ?11)
+RETURNING operation_id`.trim();
+
 const SELECT_BY_HANDLE = `
 SELECT ${COLUMNS}
 FROM paid_voice_confirmation_operations
 WHERE principal = ?1 AND handle = ?2`.trim();
 
+const SELECT_BY_HANDLE_SEALED = `
+SELECT ${SEALED_COLUMNS}
+FROM paid_voice_confirmation_operations
+WHERE principal = ?1 AND handle = ?2`.trim();
+
 const SELECT_PENDING = `
 SELECT ${COLUMNS}
+FROM paid_voice_confirmation_operations
+WHERE principal = ?1
+  AND state = 'pending_confirmation'
+  AND expires_at > ?2
+ORDER BY issued_at DESC, handle ASC
+LIMIT ?3`.trim();
+
+const SELECT_PENDING_SEALED = `
+SELECT ${SEALED_COLUMNS}
 FROM paid_voice_confirmation_operations
 WHERE principal = ?1
   AND state = 'pending_confirmation'
@@ -78,6 +106,23 @@ WHERE principal = ?3
   AND expires_at > ?2
   AND text_digest = ?5
   AND text_bytes = ?6
+RETURNING operation_id, request_id, grant_id`.trim();
+
+const CLAIM_SEALED = `
+UPDATE paid_voice_confirmation_operations
+SET state = 'provider_pending',
+    day_utc = ?1,
+    request_id = operation_id,
+    grant_id = 'grant_' || operation_id,
+    updated_at = ?2
+WHERE principal = ?3
+  AND handle = ?4
+  AND state = 'pending_confirmation'
+  AND expires_at > ?2
+  AND text_digest = ?5
+  AND text_bytes = ?6
+  AND text = '${PRIVATE_TEXT_SEALED_MARKER}'
+  AND sealed_text IS NOT NULL
 RETURNING operation_id, request_id, grant_id`.trim();
 
 const MARK_COMPLETED = `
@@ -121,6 +166,8 @@ ORDER BY name`.trim();
 
 const FOREIGN_KEYS = "PRAGMA foreign_keys";
 
+const TABLE_INFO = "PRAGMA table_info(paid_voice_confirmation_operations)";
+
 function utcDay(now) {
   let day;
   try {
@@ -135,9 +182,56 @@ function utcDay(now) {
     : null;
 }
 
-function toRecord(row) {
+function bindingFromRow(row) {
+  return Object.freeze({
+    principal: row.principal,
+    handle: row.handle,
+    operationId: row.operation_id,
+    action: row.action,
+    origin: row.origin,
+    textBytes: row.text_bytes,
+    expiresAt: row.expires_at,
+  });
+}
+
+function bindingFromRecord(record) {
+  return Object.freeze({
+    principal: record.principal,
+    handle: record.handle,
+    operationId: record.operationId,
+    action: record.action,
+    origin: record.origin,
+    textBytes: record.textBytes,
+    expiresAt: record.expiresAt,
+  });
+}
+
+function toRecord(row, { sealed = false, textSealer = null } = {}) {
   if (!row || typeof row !== "object" || Array.isArray(row)) {
     throw new Error("operation_store_invalid");
+  }
+  let text;
+  let digest;
+  if (sealed) {
+    if (row.text !== PRIVATE_TEXT_SEALED_MARKER ||
+        typeof row.sealed_text !== "string" || !textSealer) {
+      throw new Error("operation_store_invalid");
+    }
+    let opened;
+    try {
+      opened = textSealer.open({
+        sealedText: row.sealed_text,
+        ...bindingFromRow(row),
+        digestBinding: row.text_digest,
+      });
+    } catch {
+      throw new Error("operation_store_invalid");
+    }
+    text = opened.text;
+    digest = opened.textDigest;
+  } else {
+    text = row.text;
+    digest = row.text_digest;
   }
   const record = {
     version: 1,
@@ -145,8 +239,8 @@ function toRecord(row) {
     handle: row.handle,
     operationId: row.operation_id,
     principal: row.principal,
-    text: row.text,
-    textDigest: row.text_digest,
+    text,
+    textDigest: digest,
     textBytes: row.text_bytes,
     origin: row.origin,
     state: row.state,
@@ -177,13 +271,19 @@ function validTransitionArgs({ principal, handle, operationId, now } = {}) {
 export function createD1P2ConfirmationOperationStore({
   client,
   maximumDailyCalls = V1_OFFLINE_MAX_DAILY_CALLS,
+  textSealer = null,
 } = {}) {
   if (!client || typeof client.query !== "function" ||
       !Number.isSafeInteger(maximumDailyCalls) ||
       maximumDailyCalls < 1 ||
-      maximumDailyCalls > V1_OFFLINE_MAX_DAILY_CALLS) {
+      maximumDailyCalls > V1_OFFLINE_MAX_DAILY_CALLS ||
+      (textSealer !== null &&
+        (typeof textSealer?.seal !== "function" ||
+         typeof textSealer?.open !== "function" ||
+         typeof textSealer?.digestBinding !== "function"))) {
     throw new Error("operation_store_unavailable");
   }
+  const sealed = textSealer !== null;
 
   async function query(sql, params) {
     try {
@@ -202,21 +302,50 @@ export function createD1P2ConfirmationOperationStore({
           record.state !== P2_OPERATION_STATES.PENDING_CONFIRMATION) {
         return { created: false, reason: "invalid" };
       }
+      let sealedValues = null;
+      if (sealed) {
+        try {
+          sealedValues = textSealer.seal({
+            text: record.text,
+            ...bindingFromRecord(record),
+          });
+          if (sealedValues?.textDigest !== record.textDigest ||
+              sealedValues?.textBytes !== record.textBytes) {
+            throw new Error("sealed_text_invalid");
+          }
+        } catch {
+          throw new Error("operation_store_unavailable");
+        }
+      }
       let rows;
       try {
-        rows = await client.query(INSERT_PENDING, [
-          record.principal,
-          record.handle,
-          record.operationId,
-          record.action,
-          record.text,
-          record.textDigest,
-          record.textBytes,
-          record.origin,
-          maximumDailyCalls,
-          record.issuedAt,
-          record.expiresAt,
-        ]);
+        rows = sealed
+          ? await client.query(INSERT_PENDING_SEALED, [
+            record.principal,
+            record.handle,
+            record.operationId,
+            record.action,
+            sealedValues.digestBinding,
+            record.textBytes,
+            record.origin,
+            maximumDailyCalls,
+            record.issuedAt,
+            record.expiresAt,
+            sealedValues.sealedText,
+          ])
+          : await client.query(INSERT_PENDING, [
+            record.principal,
+            record.handle,
+            record.operationId,
+            record.action,
+            record.text,
+            record.textDigest,
+            record.textBytes,
+            record.origin,
+            maximumDailyCalls,
+            record.issuedAt,
+            record.expiresAt,
+          ]);
       } catch (error) {
         if (/UNIQUE constraint failed/i.test(String(error?.message ?? ""))) {
           return { created: false, reason: "collision" };
@@ -232,9 +361,14 @@ export function createD1P2ConfirmationOperationStore({
 
     async get({ principal, handle } = {}) {
       if (typeof principal !== "string" || !HANDLE_PATTERN.test(handle ?? "")) return null;
-      const rows = await query(SELECT_BY_HANDLE, [principal, handle]);
+      const rows = await query(
+        sealed ? SELECT_BY_HANDLE_SEALED : SELECT_BY_HANDLE,
+        [principal, handle],
+      );
       if (rows.length > 1) throw new Error("operation_store_invalid");
-      return rows.length === 1 ? toRecord(rows[0]) : null;
+      return rows.length === 1
+        ? toRecord(rows[0], { sealed, textSealer })
+        : null;
     },
 
     async listPending({ principal, now, limit = 10 } = {}) {
@@ -243,9 +377,12 @@ export function createD1P2ConfirmationOperationStore({
           !Number.isSafeInteger(limit) || limit < 1 || limit > 20) {
         return [];
       }
-      const rows = await query(SELECT_PENDING, [principal, now, limit]);
+      const rows = await query(
+        sealed ? SELECT_PENDING_SEALED : SELECT_PENDING,
+        [principal, now, limit],
+      );
       if (rows.length > limit) throw new Error("operation_store_invalid");
-      return rows.map(toRecord);
+      return rows.map(row => toRecord(row, { sealed, textSealer }));
     },
 
     async claim({ principal, handle, textDigest: digest, textBytes, now } = {}) {
@@ -260,9 +397,34 @@ export function createD1P2ConfirmationOperationStore({
       const day = utcDay(now);
       if (!day) return { claimed: false, reason: "clock" };
 
+      let digestBinding = digest;
+      if (sealed) {
+        const current = await query(
+          SELECT_BY_HANDLE_SEALED,
+          [principal, handle],
+        );
+        if (current.length > 1) throw new Error("operation_store_invalid");
+        if (current.length === 0) return { claimed: false, reason: "state" };
+        const record = toRecord(current[0], { sealed: true, textSealer });
+        if (record.textDigest !== digest || record.textBytes !== textBytes) {
+          return { claimed: false, reason: "binding_mismatch" };
+        }
+        try {
+          digestBinding = textSealer.digestBinding(
+            bindingFromRecord(record),
+            digest,
+          );
+        } catch {
+          throw new Error("operation_store_unavailable");
+        }
+      }
+
       let rows;
       try {
-        rows = await client.query(CLAIM, [day, now, principal, handle, digest, textBytes]);
+        rows = await client.query(
+          sealed ? CLAIM_SEALED : CLAIM,
+          [day, now, principal, handle, digestBinding, textBytes],
+        );
       } catch (error) {
         if (String(error?.message ?? "").includes("quota_denied")) {
           return { claimed: false, reason: "quota" };
@@ -368,10 +530,20 @@ export function createD1P2ConfirmationOperationStore({
       ]) {
         if (!names.has(required)) throw new Error("schema_unqualified");
       }
+      if (sealed) {
+        const tableInfo = await query(TABLE_INFO, []);
+        const column = tableInfo.find(row => row?.name === "sealed_text");
+        if (tableInfo.length === 0 || !column ||
+            String(column.type ?? "").toUpperCase() !== "TEXT" ||
+            Number(column.notnull) !== 0 || column.dflt_value !== null) {
+          throw new Error("schema_unqualified");
+        }
+      }
       return Object.freeze({
         ok: true,
         singleStatementAdmission: true,
         foreignKeys: true,
+        ...(sealed ? { sealedText: true } : {}),
       });
     },
   });
@@ -379,9 +551,13 @@ export function createD1P2ConfirmationOperationStore({
 
 export const D1_P2_CONFIRMATION_SQL = Object.freeze({
   insertPending: INSERT_PENDING,
+  insertPendingSealed: INSERT_PENDING_SEALED,
   selectByHandle: SELECT_BY_HANDLE,
+  selectByHandleSealed: SELECT_BY_HANDLE_SEALED,
   selectPending: SELECT_PENDING,
+  selectPendingSealed: SELECT_PENDING_SEALED,
   claim: CLAIM,
+  claimSealed: CLAIM_SEALED,
   markCompleted: MARK_COMPLETED,
   markUnknown: MARK_UNKNOWN,
   attestAdmission: ATTEST_ADMISSION,
