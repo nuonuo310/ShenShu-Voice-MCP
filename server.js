@@ -14,6 +14,8 @@ import { handleProtectedResourceShell } from "./src/protected-resource-shell.js"
 import { handlePrivateWebPlayer } from "./src/private-web-player.js";
 import { createD1AdmissionDryRun } from "./src/d1-admission-dry-run.js";
 import { resolveProtectedResourceIdentity } from "./src/protected-resource-identity.js";
+import { createCloudflareD1Http } from "./src/cloudflare-d1-http.js";
+import { composeV1P2StagingRuntime } from "./src/v1-p2-staging-runtime.js";
 
 const MCP_PATH = "/mcp";
 const TONE_PATH = "/test-tone.wav";
@@ -177,6 +179,8 @@ export function createShenShuHttpServer({
   env = process.env,
   fetchImpl = globalThis.fetch,
   nonbillableClosure = null,
+  protectedResourceJwksCache = undefined,
+  protectedResourceIdentityVerifier = null,
 } = {}) {
   if (nonbillableClosure !== null &&
       (!nonbillableClosure ||
@@ -219,6 +223,8 @@ export function createShenShuHttpServer({
   if (await handleProtectedResourceShell(req, res, url.pathname, {
     env,
     proposalBroker: activeClosure?.broker ?? null,
+    jwksCache: protectedResourceJwksCache,
+    identityVerifier: protectedResourceIdentityVerifier,
   })) return;
 
   if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
@@ -281,11 +287,49 @@ export function createShenShuHttpServer({
   });
 }
 
+/**
+ * Normal runtime entry. Tests and the deploy process both use this exact
+ * composition so a manually injected closure cannot mask a startup path that
+ * would always stay null. Only nonsecret booleans and a coarse code leave here.
+ */
+export async function createShenShuRuntimeServer({
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+  createD1Client = createCloudflareD1Http,
+} = {}) {
+  const composed = await composeV1P2StagingRuntime({
+    env,
+    fetchImpl,
+    createD1Client,
+  });
+  const server = createShenShuHttpServer({
+    env,
+    fetchImpl,
+    nonbillableClosure: composed.nonbillableClosure,
+    protectedResourceJwksCache: composed.jwksCache,
+    protectedResourceIdentityVerifier: composed.identityVerifier,
+  });
+  return Object.freeze({
+    server,
+    sealedProposalEnabled: composed.sealedProposalEnabled === true,
+    sealedStartupCode: composed.code,
+    staticTestJwks: composed.staticTestJwks === true,
+  });
+}
+
 export const httpServer = createShenShuHttpServer();
 
 if (process.env.NODE_ENV !== "test") {
   const port = Number(process.env.PORT ?? 8787);
-  httpServer.listen(port, () => {
+  const runtime = await createShenShuRuntimeServer({ env: process.env }).catch(() => ({
+    // A startup composition failure still serves P1 only; there is no
+    // plaintext D1 or in-memory proposal fallback.
+    server: createShenShuHttpServer({ env: process.env }),
+    sealedProposalEnabled: false,
+    sealedStartupCode: "startup_exception",
+    staticTestJwks: false,
+  }));
+  runtime.server.listen(port, () => {
     console.log(`ShenShu Voice MCP P1-MOCK listening on http://localhost:${port}${MCP_PATH}`);
     // Diagnostic emits booleans only: no credential values, OAuth subjects or network calls.
     const env = process.env;
@@ -296,6 +340,12 @@ if (process.env.NODE_ENV !== "test") {
       dry_run_flag_enabled: dryRunEnabled,
       d1_config_accepted: dryRunRegistered,
       d1_tool_registered: env.SHENSHU_AUTH_MCP_ENABLED === "1" && dryRunRegistered,
+      paid_voice_enabled: false
+    }));
+    console.log("shenshu_staging_sealed_startup " + JSON.stringify({
+      sealed_proposal_enabled: runtime.sealedProposalEnabled,
+      sealed_startup_code: runtime.sealedStartupCode,
+      static_test_jwks: runtime.staticTestJwks,
       paid_voice_enabled: false
     }));
   });

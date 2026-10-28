@@ -1,11 +1,11 @@
 /**
  * Staging-only sealed nonbillable closure candidate.
  *
- * This module is not imported by server.js. It is the single server-side
- * composition path that a future explicitly authorized deployment may call.
+ * server.js reaches this module only through the startup composition helper,
+ * which shares one verified-identity resolver with the protected MCP route.
  * It returns null unless every staging identity, feature flag, session secret,
- * 32-byte master key, D1 client and 005 schema preflight succeeds. A boolean
- * flag alone can never select plaintext or an in-memory fallback.
+ * player client ID, 32-byte master key, D1 client and 005 schema preflight
+ * succeeds. A boolean flag alone can never select plaintext or memory.
  */
 import { createCloudflareD1Http } from "./cloudflare-d1-http.js";
 import { createD1P2ConfirmationOperationStore } from "./d1-p2-confirmation-operation-store.js";
@@ -36,8 +36,31 @@ function decodeMasterKey(value) {
 
 function validSessionSecret(value) {
   return typeof value === "string" &&
-    value.length >= 32 && value.length <= 4096 &&
+    Buffer.byteLength(value, "utf8") >= 32 &&
+    Buffer.byteLength(value, "utf8") <= 256 &&
     !/[\x00-\x1f\x7f]/.test(value);
+}
+
+function validClientId(value) {
+  return typeof value === "string" && /^[A-Za-z0-9]{10,128}$/.test(value);
+}
+
+/**
+ * Nonsecret environment precheck shared by runtime composition and the
+ * candidate. Only "sealed_config_ready" permits any D1 client construction.
+ */
+export function assessV1P2StagingSealedConfig(env = process.env) {
+  if (env?.[STAGING_SEALED_PLAYER_FLAG] !== "1") return "sealed_flag_off";
+  if (env?.SHENSHU_NONBILLABLE_PLAYER_ENABLED !== "1") return "nonbillable_flag_off";
+  if (env?.SHENSHU_PLAYER_ENABLED !== "1") return "player_flag_off";
+  if (env?.SHENSHU_AUTH_MCP_ENABLED !== "1") return "auth_mcp_flag_off";
+  const identity = resolveProtectedResourceIdentity(env);
+  if (identity.ok !== true) return "staging_identity_invalid";
+  if (identity.staging !== true) return "not_staging";
+  if (!decodeMasterKey(env?.[PRIVATE_TEXT_MASTER_KEY_ENV])) return "master_key_invalid";
+  if (!validSessionSecret(env?.SHENSHU_PLAYER_SESSION_SECRET)) return "session_secret_invalid";
+  if (!validClientId(env?.SHENSHU_PLAYER_AUTH0_CLIENT_ID)) return "player_client_id_invalid";
+  return "sealed_config_ready";
 }
 
 export async function createV1P2StagingSealedClosureCandidate({
@@ -52,24 +75,16 @@ export async function createV1P2StagingSealedClosureCandidate({
   operationTtlMs,
 } = {}) {
   try {
-    if (env?.[STAGING_SEALED_PLAYER_FLAG] !== "1" ||
-        env?.SHENSHU_NONBILLABLE_PLAYER_ENABLED !== "1" ||
-        env?.SHENSHU_PLAYER_ENABLED !== "1" ||
-        env?.SHENSHU_AUTH_MCP_ENABLED !== "1" ||
-        typeof createD1Client !== "function" ||
+    if (typeof createD1Client !== "function" ||
         typeof mcpResolveVerifiedPrincipal !== "function" ||
         !Number.isSafeInteger(maximumDailyCalls) ||
         maximumDailyCalls < 1 ||
         maximumDailyCalls > V1_OFFLINE_MAX_DAILY_CALLS) {
       return null;
     }
-    const identity = resolveProtectedResourceIdentity(env);
-    if (identity.ok !== true || identity.staging !== true) return null;
-
+    if (assessV1P2StagingSealedConfig(env) !== "sealed_config_ready") return null;
     const masterKey = decodeMasterKey(env?.[PRIVATE_TEXT_MASTER_KEY_ENV]);
     const sessionSecret = env?.SHENSHU_PLAYER_SESSION_SECRET;
-    if (!masterKey || !validSessionSecret(sessionSecret)) return null;
-
     const client = createD1Client({ env });
     if (!client || typeof client.query !== "function") return null;
     const textSealer = createPrivateTextSealer({ masterKey });

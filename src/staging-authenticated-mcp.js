@@ -35,6 +35,9 @@ if(oauthUiWithMarker===oauthBridgeUi)throw Error("oauth_ui_marker_injection_fail
 
 export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=null}={}) {
   if(env?.SHENSHU_AUTH_MCP_ENABLED!=="1") return null;
+  // An explicit test-only static key set must never authenticate a production
+  // process, even when the flag was misconfigured. Rotating JWKS still works.
+  if(env?.NODE_ENV==="production"&&env?.SHENSHU_AUTH_STATIC_JWKS_TEST_ONLY==="1") return null;
   try {
     // Production staging prefers live trusted JWKS retrieval; static JSON exists
     // only as an explicit test/dev fallback and is never caller supplied.
@@ -216,7 +219,8 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
  * Returns no identity data to the client. Errors are generic and fail closed.
  */
 export async function handleStagingAuthenticatedMcp(req,res,{
-  env,issuer,audience,resourceMetadataUrl,jwksCache=null,proposalBroker=null
+  env,issuer,audience,resourceMetadataUrl,jwksCache=null,proposalBroker=null,
+  identityVerifier=null
 }) {
   const challenge='Bearer resource_metadata="'+resourceMetadataUrl+'", scope="voice:speak"';
   const refuse=(status,reason, extra={})=>{
@@ -228,7 +232,11 @@ export async function handleStagingAuthenticatedMcp(req,res,{
     });
     res.end(JSON.stringify({error:reason}));
   };
-  const verifier=createStagingIdentityVerifier(env,{issuer,audience,jwksCache});
+  // Startup composition may pass the exact verifier already shared with the
+  // sealed proposal broker; otherwise the per-request trust path is rebuilt.
+  const verifier=typeof identityVerifier==="function"
+    ? identityVerifier
+    : createStagingIdentityVerifier(env,{issuer,audience,jwksCache});
   if(!verifier) {
     refuse(401,"unauthorized",{"WWW-Authenticate":challenge});
     return;
