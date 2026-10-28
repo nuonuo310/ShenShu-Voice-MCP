@@ -195,3 +195,24 @@ test("valid staging composition uses the sealed store and creates no plaintext r
     );
     fixture.db.close();
   });
+
+test("the sealing receipt records bounded offline evidence and remaining gates", async () => {
+  const doc = await readFile(
+    new URL(
+      "../docs/v1-closure/V1-P2-PRIVATE-TEXT-SEALING-20261028.md",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  for (const marker of [
+    "COMPLETE",
+    "347 tests, 347 pass, 0 fail, 0 skipped, 0 todo",
+    "40734163477",
+    "db484cdbb14ca8ab520e4e42939c34d7dd7ce1f2",
+    "2/9",
+    "Deployment",
+    "NO",
+  ]) {
+    assert.match(doc, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
