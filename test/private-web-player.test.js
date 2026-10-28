@@ -472,7 +472,7 @@ test("the player source has no provider, D1, public URL or chat-audio path", asy
   assert.match(source,/Authorization:"Bearer "/);
   assert.doesNotMatch(source,/client_secret|MINIMAX|MiniMax|cloudflare|d1-|ui\/message|sendMessage/i);
   assert.doesNotMatch(source,/console\.(?:log|error|warn)/);
-  assert.match(server,/handlePrivateWebPlayer\(req,\s*res,\s*url\)/);
-  assert.ok(server.indexOf("handlePrivateWebPlayer(req, res, url)")<
-    server.indexOf("handleProtectedResourceShell(req, res, url.pathname)"));
+  assert.match(server,/handlePrivateWebPlayer\(req,\s*res,\s*url,\s*\{\s*env,\s*fetchImpl\s*\}\)/);
+  assert.ok(server.indexOf("handlePrivateWebPlayer(req, res, url, { env, fetchImpl })")<
+    server.indexOf("handleProtectedResourceShell(req, res, url.pathname"));
 });

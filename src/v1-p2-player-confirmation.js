@@ -20,7 +20,7 @@ import { readPrivatePlayerSession } from "./private-web-player.js";
 import {
   P2_OPERATION_ACTION,
   P2_OPERATION_STATES,
-} from "./v1-p2-stable-operation-identity.js";
+} from "./v1-p2-operation-contract.js";
 
 export const PRIVATE_PLAYER_PENDING_PATH = "/player/pending";
 export const PRIVATE_PLAYER_CONFIRM_PATH = "/player/confirm";

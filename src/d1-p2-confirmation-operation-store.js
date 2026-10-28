@@ -18,7 +18,7 @@
 import {
   P2_OPERATION_STATES,
   validRecord as isValidP2OperationRecord,
-} from "./v1-p2-stable-operation-identity.js";
+} from "./v1-p2-operation-contract.js";
 import { V1_OFFLINE_MAX_DAILY_CALLS } from "./v1-offline-paid-pipeline.js";
 
 const HANDLE_PATTERN = /^[A-Za-z0-9_-]{43}$/;

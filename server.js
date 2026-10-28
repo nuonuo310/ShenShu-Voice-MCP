@@ -13,6 +13,7 @@ import { makeInlineToneFixture } from "./src/inline-fixture.js";
 import { handleProtectedResourceShell } from "./src/protected-resource-shell.js";
 import { handlePrivateWebPlayer } from "./src/private-web-player.js";
 import { createD1AdmissionDryRun } from "./src/d1-admission-dry-run.js";
+import { resolveProtectedResourceIdentity } from "./src/protected-resource-identity.js";
 
 const MCP_PATH = "/mcp";
 const TONE_PATH = "/test-tone.wav";
@@ -172,20 +173,52 @@ export function createShenShuServer() {
   return server;
 }
 
-const port = Number(process.env.PORT ?? 8787);
+export function createShenShuHttpServer({
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+  nonbillableClosure = null,
+} = {}) {
+  if (nonbillableClosure !== null &&
+      (!nonbillableClosure ||
+       typeof nonbillableClosure.broker?.initiate !== "function" ||
+       typeof nonbillableClosure.broker?.status !== "function" ||
+       typeof nonbillableClosure.pendingHandler?.handle !== "function")) {
+    throw new Error("nonbillable_closure_invalid");
+  }
+  // Trusted server-side injection only. The MCP/player bridge also requires an
+  // explicit staging flag, the exact staging resource identity and the existing
+  // player guard. No query, form, header or tool argument can enable it.
+  // This process intentionally does not synthesize a D1-backed closure: the
+  // 004 text column is plaintext today and no private-at-rest policy has been
+  // approved. A flag alone therefore leaves both surfaces disabled.
+  const identity = resolveProtectedResourceIdentity(env);
+  const activeClosure = nonbillableClosure !== null &&
+    env.SHENSHU_NONBILLABLE_PLAYER_ENABLED === "1" &&
+    env.SHENSHU_PLAYER_ENABLED === "1" &&
+    identity.ok === true && identity.staging === true
+    ? nonbillableClosure
+    : null;
 
-export const httpServer = createHttpServer(async (req, res) => {
+  return createHttpServer(async (req, res) => {
   if (!req.url) {
     res.writeHead(400).end("missing_url");
     return;
   }
   const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
 
+  // Read-only owner view for the nonbillable proposal bridge. It never renders
+  // a confirmation form and never imports a paid handler.
+  if (activeClosure &&
+      await activeClosure.pendingHandler.handle(req, res, url)) return;
+
   // Standalone staging player. Disabled by default and never mounted in production mode.
-  if (await handlePrivateWebPlayer(req, res, url)) return;
+  if (await handlePrivateWebPlayer(req, res, url, { env, fetchImpl })) return;
 
   // Staging auth resource: denies ALL paid calls, never creates an MCP session.
-  if (await handleProtectedResourceShell(req, res, url.pathname)) return;
+  if (await handleProtectedResourceShell(req, res, url.pathname, {
+    env,
+    proposalBroker: activeClosure?.broker ?? null,
+  })) return;
 
   if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
     res.writeHead(204, {
@@ -244,9 +277,13 @@ export const httpServer = createHttpServer(async (req, res) => {
   }
 
   res.writeHead(404).end("not_found");
-});
+  });
+}
+
+export const httpServer = createShenShuHttpServer();
 
 if (process.env.NODE_ENV !== "test") {
+  const port = Number(process.env.PORT ?? 8787);
   httpServer.listen(port, () => {
     console.log(`ShenShu Voice MCP P1-MOCK listening on http://localhost:${port}${MCP_PATH}`);
     // Diagnostic emits booleans only: no credential values, OAuth subjects or network calls.
