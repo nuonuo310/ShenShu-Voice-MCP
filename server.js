@@ -12,6 +12,7 @@ import { checkText } from "./src/contract.js";
 import { makeInlineToneFixture } from "./src/inline-fixture.js";
 import { handleProtectedResourceShell } from "./src/protected-resource-shell.js";
 import { handlePrivateWebPlayer } from "./src/private-web-player.js";
+import { PRIVATE_PLAYER_PENDING_PATH } from "./src/v1-p2-readonly-player-pending.js";
 import { createD1AdmissionDryRun } from "./src/d1-admission-dry-run.js";
 import { resolveProtectedResourceIdentity } from "./src/protected-resource-identity.js";
 import { createCloudflareD1Http } from "./src/cloudflare-d1-http.js";
@@ -213,7 +214,10 @@ export function createShenShuHttpServer({
 
   // Read-only owner view for the nonbillable proposal bridge. It never renders
   // a confirmation form and never imports a paid handler.
+  // Hard path guard: even if a future injection supplies a handler that also
+  // knows /player/confirm, the deployable server never mounts that route.
   if (activeClosure &&
+      url.pathname === PRIVATE_PLAYER_PENDING_PATH &&
       await activeClosure.pendingHandler.handle(req, res, url)) return;
 
   // Standalone staging player. Disabled by default and never mounted in production mode.
