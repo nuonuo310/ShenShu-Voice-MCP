@@ -38,7 +38,7 @@ AAD 必须不可歧义地绑定 `principal`, `handle`, `operation_id`, `origin`,
 2. 实现一份极小可单测的密封 codec，包含 AEAD authenticated encryption、HMAC digest binding、版本/用途隔离、密钥与 nonce 校验、安全异常；集成到现有 operation D1 adapter 的 `createPending/get/listPending/claim`。确保同样的 operationStore 同时供 protected MCP 和 signed player 读取；不要开平行 canonical state。
 3. 现有 protected MCP 的非计费 facade 和只读 `/player/pending`、生产 MOCK、签名 Auth0 principal、private WAV 原样保留。**严禁开启** `/player/confirm`、添加 model-accessible paid tool、MiniMax synthesize、quota/grant 写入或真实音频。
 4. 构建可信的 staging-only server-side sealed adapter composition **候选**，默认关闭，不在 env 只有布尔旗标时自动退回明文或内存 Map；若未取得合格 secret/D1 权限，保留 503/404 fail closed。不得接触实际凭据。保持代码局部且无新不必要依赖（Node 原生 crypto 优先）。
-5. Node24 local `node:sqlite` 与真实 HTTP MCP→signed player readonly 集成测试：unicode/最大 800 UTF-8 字节原文可正常往返；原始 D1 `text` 列**只有固定无密内容**；`sealed_text` ciphertext envelope，数据库无 plaintext，数据库 `text_digest` 不是裸 SHA-256；错误/缺失/替换密钥、篡改 ciphertext/tag/AAD/metadata、错误 owner、过期、000/004 兼容、重复/重启、安全失败。原有 004 原子 trigger 模拟、P1 login/audio、公开 MOCK 不回归，provider/paid writes 一律 0。
+5. Node24 local `node:sqlite` 与真实 HTTP MCP→signed player readonly 集成测试：unicode/最大 800 UTF-8 字节原文可正常往返；原始 D1 `text` 列**只有固定无密内容**；`sealed_text` ciphertext envelope，数据库无 plaintext，数据库 `text_digest` 不是裸 SHA-256；错误/缺失/替换密钥、篡改 ciphertext/tag/AAD/metadata、错误 owner、过期、001/002/004 兼容、重复/重启、安全失败。原有 004 原子 trigger 模拟、P1 login/audio、公开 MOCK 不回归，provider/paid writes 一律 0。
 6. 完整 `node --test`（Node24，**0 skipped**）、`node test/smoke-server.mjs`、`git diff --check` 及必要 syntax 检查。普通错误在包内自修、再验证。
 7. **只能** commit/push 到现有 Draft PR #146，等待 normal pull_request GitHub CI success；不得新 PR、merge、改 base、部署或其他仓库改动。仅追加简短 nonsecret 交付证据；绝不输出密钥或用户文本。
 
