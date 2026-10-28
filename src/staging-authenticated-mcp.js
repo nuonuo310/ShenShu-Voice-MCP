@@ -12,6 +12,7 @@ import { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { ListToolsRequestSchema, CallToolRequestSchema, ListResourcesRequestSchema, ReadResourceRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createVerifiedIdentityResolver } from "./verified-identity.js";
+import { createV1P2NonbillableMcpTools } from "./v1-p2-nonbillable-mcp.js";
 import { createAuth0JwksCache } from "./auth0-jwks-cache.js";
 import { createD1AdmissionDryRun } from "./d1-admission-dry-run.js";
 import { preparePrivateFixtureAudio } from "./private-fixture-delivery.js";
@@ -57,7 +58,7 @@ export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=nul
   } catch {return null;}
 }
 
-export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,privateFixtureEnabled=false}={}) {
+export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,privateFixtureEnabled=false,proposalTools=null}={}) {
   if(typeof verifiedSubject!=="string" || verifiedSubject.length<8) throw Error("missing_verified_subject");
   const server=new Server(
     {name:"shenshu-identity-stage",version:"0.2.0"},
@@ -138,6 +139,12 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     inputSchema:{type:"object",properties:{},additionalProperties:false},
     securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{visibility:["app"]}}
   });
+  if(proposalTools!==null) {
+    if(!proposalTools || !Array.isArray(proposalTools.tools) ||
+       typeof proposalTools.call!=="function" ||
+       proposalTools.tools.length!==2) throw Error("proposal_bridge_unavailable");
+    tools.push(...proposalTools.tools);
+  }
   server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[{
     uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE
   }]:[]}));
@@ -149,6 +156,9 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
   server.setRequestHandler(CallToolRequestSchema,async request=>{
     const args=request.params.arguments;
+    if(proposalTools && proposalTools.tools.some(tool=>tool.name===request.params.name)) {
+      return proposalTools.call(request.params.name,args);
+    }
     if(args!==undefined && (
       args===null || typeof args!=="object" || Array.isArray(args) ||
       Object.keys(args).length!==0
@@ -206,7 +216,7 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
  * Returns no identity data to the client. Errors are generic and fail closed.
  */
 export async function handleStagingAuthenticatedMcp(req,res,{
-  env,issuer,audience,resourceMetadataUrl,jwksCache=null
+  env,issuer,audience,resourceMetadataUrl,jwksCache=null,proposalBroker=null
 }) {
   const challenge='Bearer resource_metadata="'+resourceMetadataUrl+'", scope="voice:speak"';
   const refuse=(status,reason, extra={})=>{
@@ -237,8 +247,23 @@ export async function handleStagingAuthenticatedMcp(req,res,{
     return;
   }
   const admissionDryRun=createD1AdmissionDryRun({env});
+  // Server-side injection only. No request flag or tool argument can enable
+  // the bridge; the default staging/production behavior is unchanged.
+  let proposalTools=null;
+  if(proposalBroker!==null) {
+    try {
+      proposalTools=createV1P2NonbillableMcpTools({
+        broker:proposalBroker,
+        verifiedRequest:{headers:{authorization:req.headers.authorization}}
+      });
+    } catch {
+      refuse(503,"proposal_bridge_unavailable");
+      return;
+    }
+  }
   const server=makeStagingMcpServer({verifiedSubject:verifiedIdentity.subject,admissionDryRun,
-    privateFixtureEnabled:env.SHENSHU_PRIVATE_FIXTURE_ENABLED==="1"});
+    privateFixtureEnabled:env.SHENSHU_PRIVATE_FIXTURE_ENABLED==="1",
+    proposalTools});
   const transport=new StreamableHTTPServerTransport({
     sessionIdGenerator:undefined,enableJsonResponse:true
   });
