@@ -9,6 +9,10 @@
  * node:sqlite exists in Node 24.3+ without a flag. On older Node the SQL tests
  * are explicitly skipped rather than replaced with a fake success.
  */
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { makeStagingMcpServer } from "../src/staging-authenticated-mcp.js";
+import { createV1P2NonbillableMcpTools, P2_PREPARE_TOOL } from "../src/v1-p2-nonbillable-mcp.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac, generateKeyPairSync, sign } from "node:crypto";
@@ -884,5 +888,44 @@ test("D1 qualification closure document records the bounded evidence and remaini
       "quota_denied",
     ]) {
       assert.match(doc, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    }
+  });
+
+test("verified MCP proposal appears only on matching private player, with zero paid admission",
+  { skip: sqliteSkip }, async () => {
+    resetClock();
+    const h = await makeHarness();
+    const bridge = createV1P2NonbillableMcpTools({
+      broker: h.confirmation.broker,
+      verifiedRequest: trustedRequest(),
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = makeStagingMcpServer({
+      verifiedSubject: PRINCIPAL,
+      proposalTools: bridge,
+    });
+    const client = new Client({ name: "voice-p2-integration", version: "0.1.0" });
+    try {
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      const text = "糯糯，今天用04声音跟你说新的一句话。";
+      const proposed = await client.callTool({
+        name: P2_PREPARE_TOOL,
+        arguments: { text },
+      });
+      assert.equal(proposed.structuredContent.billable, false);
+      assert.equal(proposed.structuredContent.status, "pending_confirmation");
+      assert.equal(proposed.structuredContent.text, undefined);
+      const own = await pendingPage(h.confirmation.playerHandler, sessionCookie(PRINCIPAL));
+      assert.equal(own.status, 200);
+      assert.ok(own.text.includes(text));
+      const other = await pendingPage(h.confirmation.playerHandler, sessionCookie(OTHER_PRINCIPAL));
+      assert.equal(other.status, 200);
+      assert.ok(!other.text.includes(text));
+      assert.deepEqual(countRows(h.db), { reservations: 0, grants: 0, consumed: 0 });
+      assert.equal(h.providerArgs.length, 0);
+    } finally {
+      await client.close();
+      await server.close();
     }
   });
