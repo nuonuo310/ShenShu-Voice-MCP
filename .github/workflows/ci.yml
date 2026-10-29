@@ -28,5 +28,7 @@ jobs:
       - run: node --check src/p2-kodo-private-audio-backend.js
       - run: node --check src/v1-p2-d1-qualification-plan.js
       - run: node --check src/v1-kodo-qualification-plan.js
+      - run: node --check scripts/qualify-d1-cloud-once.mjs
+      - run: node --check scripts/qualify-kodo-owner-once.mjs
       - run: npm test
       - run: node test/smoke-server.mjs
