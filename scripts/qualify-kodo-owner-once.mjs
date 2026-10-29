@@ -1,6 +1,6 @@
 /**
  * OWNER-ONLY one-time real Qiniu Kodo Singapore encrypted WAV PUT + 3 GET.
- * Unlike the consumed historic CAS trial: NO DELETE/HEAD/LIST/IfMatch.
+ * Unlike the consumed historic CAS trial: never remove or enumerate objects.
  * Run only with --run in own local interactive Node24 PowerShell terminal.
  * No real voice or MiniMax; no secrets or plaintext objects persisted.
  */
