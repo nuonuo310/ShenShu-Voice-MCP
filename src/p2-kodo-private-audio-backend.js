@@ -4,10 +4,11 @@
  * This module implements the existing private-result backend contract:
  * putLatest / getLatest / deleteExpired. It never returns an object URL, never
  * creates a presigned URL, and never stores WAV bytes or the canonical
- * principal in plaintext. A caller must inject an AWS SDK v3 S3 client, a
- * private bucket, a fixed object prefix, a 32-byte key material buffer and
- * bounded operation/timeout settings. It performs no network work unless the
- * injected client is invoked.
+ * principal in plaintext. Physical removal belongs only to the configured
+ * bucket lifecycle rule; this module never issues a DELETE, HEAD or LIST. A
+ * caller must inject an AWS SDK v3 S3 client, a private bucket, a fixed object
+ * prefix, a 32-byte key material buffer and bounded timeout settings. It
+ * performs no network work unless the injected client is invoked.
  */
 import {
   createCipheriv,
@@ -18,10 +19,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import {
-  DeleteObjectCommand,
   GetObjectCommand,
-  HeadObjectCommand,
-  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -36,7 +34,6 @@ export const KODO_S3_ENDPOINT = "https://s3.ap-southeast-1.qiniucs.com";
 export const KODO_DEFAULT_PREFIX = "shenshu/voice-v1/private-audio/";
 export const KODO_DEFAULT_TIMEOUT_MS = 10_000;
 export const KODO_MAX_TIMEOUT_MS = 60_000;
-export const KODO_DEFAULT_MAX_OPERATIONS = 16;
 
 const ENVELOPE_VERSION = 1;
 const ENVELOPE_ALGORITHM = "A256GCM";
@@ -110,14 +107,6 @@ function validMasterKey(value) {
 
 function validPositiveInteger(value, maximum) {
   return Number.isSafeInteger(value) && value >= 1 && value <= maximum;
-}
-
-function validOperationCap(value) {
-  return Number.isSafeInteger(value) && value >= 3 && value <= 32;
-}
-
-function validEtag(value) {
-  return typeof value === "string" && value.length >= 2 && value.length <= 512;
 }
 
 function deriveKeys(masterKey) {
@@ -366,11 +355,6 @@ function isNotFound(error) {
     error?.$metadata?.httpStatusCode === 404;
 }
 
-function isPreconditionFailed(error) {
-  return error?.name === "PreconditionFailed" ||
-    error?.$metadata?.httpStatusCode === 412;
-}
-
 async function readBoundedBody(body) {
   if (Buffer.isBuffer(body)) {
     if (body.length > MAX_ENVELOPE_BYTES) throw new Error("invalid_kodo_object");
@@ -467,37 +451,19 @@ export function createP2KodoPrivateAudioBackend({
   masterKey,
   clock = () => new Date(),
   requestTimeoutMs = KODO_DEFAULT_TIMEOUT_MS,
-  maxOperations = KODO_DEFAULT_MAX_OPERATIONS,
 } = {}) {
   if (!validClient(s3Client) ||
       !validBucket(bucket) ||
       !validPrefix(prefix) ||
       !validMasterKey(masterKey) ||
       typeof clock !== "function" ||
-      !validPositiveInteger(requestTimeoutMs, KODO_MAX_TIMEOUT_MS) ||
-      !validOperationCap(maxOperations)) {
+      !validPositiveInteger(requestTimeoutMs, KODO_MAX_TIMEOUT_MS)) {
     throw new Error("kodo_backend_unavailable");
   }
   const keys = deriveKeys(masterKey);
-  let continuationToken = null;
 
   function keyFor(principal) {
     return objectKeyFor(keys, prefix, principal);
-  }
-
-  async function deleteObject(key, deadline, etag) {
-    if (!validEtag(etag)) return false;
-    try {
-      await s3Client.send(new DeleteObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        IfMatch: etag,
-      }), { abortSignal: signalFor(deadline) });
-      return true;
-    } catch (error) {
-      if (isNotFound(error) || isPreconditionFailed(error)) return false;
-      throw new Error("kodo_delete_failed");
-    }
   }
 
   return Object.freeze({
@@ -559,7 +525,6 @@ export function createP2KodoPrivateAudioBackend({
         throw new Error("kodo_object_integrity_failed");
       }
       if (Date.parse(parsed.expiresAt) <= current.valueOf()) {
-        await deleteObject(key, deadline, response?.ETag);
         return null;
       }
       return Object.freeze({
@@ -574,69 +539,13 @@ export function createP2KodoPrivateAudioBackend({
     },
 
     async deleteExpired({ before } = {}) {
-      const cutoff = nowDate(before, clock);
-      const deadline = makeDeadline(requestTimeoutMs);
-      let operations = 1;
-      const maxKeys = Math.max(1, Math.floor((maxOperations - 1) / 2));
-      let listing;
-      try {
-        listing = await s3Client.send(new ListObjectsV2Command({
-          Bucket: bucket,
-          Prefix: prefix,
-          MaxKeys: maxKeys,
-          ...(continuationToken === null
-            ? {}
-            : { ContinuationToken: continuationToken }),
-        }), { abortSignal: signalFor(deadline) });
-      } catch {
-        throw new Error("kodo_list_failed");
-      }
-      const nextContinuationToken = listing?.NextContinuationToken ?? null;
-      let deleted = 0;
-      let scanned = 0;
-      let truncated = listing?.IsTruncated === true;
-      let pageComplete = true;
-      for (const item of Array.isArray(listing?.Contents) ? listing.Contents : []) {
-        if (typeof item?.Key !== "string" || !item.Key.startsWith(prefix)) continue;
-        if (operations + 1 > maxOperations) {
-          truncated = true;
-          pageComplete = false;
-          break;
-        }
-        operations += 1;
-        let head;
-        try {
-          head = await s3Client.send(new HeadObjectCommand({
-            Bucket: bucket,
-            Key: item.Key,
-          }), { abortSignal: signalFor(deadline) });
-        } catch (error) {
-          if (isNotFound(error)) continue;
-          throw new Error("kodo_head_failed");
-        }
-        scanned += 1;
-        if (!validEtag(head?.ETag)) throw new Error("kodo_head_failed");
-        const metadata = normalizeMetadata(head?.Metadata);
-        if (metadata["shenshu-version"] !== String(ENVELOPE_VERSION) ||
-            !validIsoTimestamp(metadata["expires-at"]) ||
-            Date.parse(metadata["expires-at"]) > cutoff.valueOf()) {
-          continue;
-        }
-        if (operations + 1 > maxOperations) {
-          truncated = true;
-          pageComplete = false;
-          break;
-        }
-        operations += 1;
-        if (await deleteObject(item.Key, deadline, head.ETag)) deleted += 1;
-      }
-      if (pageComplete) {
-        if (truncated && nextContinuationToken === null) {
-          throw new Error("kodo_list_failed");
-        }
-        continuationToken = nextContinuationToken;
-      }
-      return Object.freeze({ deleted, scanned, truncated });
+      nowDate(before, clock);
+      return Object.freeze({
+        deleted: 0,
+        scanned: 0,
+        truncated: false,
+        physicalRemoval: "bucket_lifecycle_only",
+      });
     },
   });
 }

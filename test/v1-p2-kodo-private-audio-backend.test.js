@@ -120,13 +120,6 @@ function notFound() {
   });
 }
 
-function preconditionFailed() {
-  return Object.assign(new Error("precondition failed"), {
-    name: "PreconditionFailed",
-    $metadata: { httpStatusCode: 412 },
-  });
-}
-
 function abortableDelay(ms, signal) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -147,6 +140,7 @@ class FakeS3 {
     this.calls = [];
     this.failure = null;
     this.beforeCommand = null;
+    this.afterGet = null;
   }
 
   failOn(name, { error = new Error("fixture s3 failure"), delayMs = 0 } = {}) {
@@ -201,52 +195,15 @@ class FakeS3 {
       if (input.Bucket !== BUCKET) throw new Error("unexpected get");
       const row = this.objects.get(input.Key);
       if (!row) throw notFound();
-      return {
+      const response = {
         Body: Readable.from([Buffer.from(row.body)]),
         ContentLength: row.body.length,
         ContentType: row.contentType,
         Metadata: { ...row.metadata },
         ETag: row.etag,
       };
-    }
-    if (name === "HeadObjectCommand") {
-      const row = this.objects.get(input.Key);
-      if (!row) throw notFound();
-      return {
-        ContentLength: row.body.length,
-        Metadata: { ...row.metadata },
-        ETag: row.etag,
-      };
-    }
-    if (name === "DeleteObjectCommand") {
-      const row = this.objects.get(input.Key);
-      if (!row) throw notFound();
-      if (input.IfMatch !== row.etag) throw preconditionFailed();
-      this.objects.delete(input.Key);
-      return {};
-    }
-    if (name === "ListObjectsV2Command") {
-      if (input.Prefix !== KODO_DEFAULT_PREFIX) throw new Error("unexpected prefix");
-      const sorted = [...this.objects.keys()]
-        .filter(key => key.startsWith(input.Prefix))
-        .sort();
-      const offset = input.ContinuationToken === undefined
-        ? 0
-        : sorted.findIndex(key => key > input.ContinuationToken);
-      const start = offset < 0 ? sorted.length : offset;
-      const maxKeys = input.MaxKeys;
-      if (!Number.isSafeInteger(maxKeys) || maxKeys < 1) {
-        throw new Error("unexpected list");
-      }
-      const page = sorted.slice(start, start + maxKeys);
-      const next = start + page.length;
-      return {
-        Contents: page.map(Key => ({ Key })),
-        IsTruncated: next < sorted.length,
-        ...(next < sorted.length && page.length > 0
-          ? { NextContinuationToken: page.at(-1) }
-          : {}),
-      };
+      if (this.afterGet) await this.afterGet(input, row);
+      return response;
     }
     throw new Error("unexpected command " + name);
   }
@@ -321,7 +278,7 @@ test("Kodo client fixes the Singapore HTTPS endpoint and one-attempt policy",
     }), /kodo_client_unavailable/);
   });
 
-test("backend rejects unsafe bucket, prefix, key, timeout and operation limits",
+test("backend rejects unsafe bucket, prefix, key and timeout",
   () => {
     const fake = new FakeS3();
     for (const options of [
@@ -331,9 +288,6 @@ test("backend rejects unsafe bucket, prefix, key, timeout and operation limits",
       { prefix: "shenshu//audio/" },
       { masterKey: Buffer.alloc(31) },
       { requestTimeoutMs: 60_001 },
-      { maxOperations: 1 },
-      { maxOperations: 2 },
-      { maxOperations: 33 },
     ]) {
       assert.throws(() => makeBackend(fake, options), /kodo_backend_unavailable/);
     }
@@ -486,7 +440,7 @@ test("oversized encrypted objects are rejected before unbounded reads",
     }), /kodo_get_failed/);
   });
 
-test("expired objects become unreadable and are physically deleted",
+test("expired objects become unreadable without active deletion",
   async () => {
     resetClock();
     const fake = new FakeS3();
@@ -501,11 +455,14 @@ test("expired objects become unreadable and are physically deleted",
       principal: PRINCIPAL,
       now: new Date(currentMs + 60_000).toISOString(),
     }), null);
-    assert.equal(fake.objects.size, 0);
-    assert.equal(fake.calls.filter(call => call.name === "DeleteObjectCommand").length, 1);
+    assert.equal(fake.objects.size, 1);
+    assert.equal(
+      fake.calls.some(call => call.name === "DeleteObjectCommand"),
+      false,
+    );
   });
 
-test("conditional expiry deletion cannot erase a newer concurrent write",
+test("expired read never deletes a newer concurrent write",
   async () => {
     resetClock();
     const fake = new FakeS3();
@@ -514,19 +471,20 @@ test("conditional expiry deletion cannot erase a newer concurrent write",
       recordId: "voice_" + "1".repeat(32),
     }));
     currentMs += 60_000;
-    fake.beforeCommand = {
-      name: "DeleteObjectCommand",
-      async handler() {
-        await backend.putLatest(makeRecord(PRINCIPAL, {
-          audio: OTHER_AUDIO,
-          recordId: "voice_" + "2".repeat(32),
-        }));
-      },
+    let replaced = false;
+    fake.afterGet = async () => {
+      if (replaced) return;
+      replaced = true;
+      await backend.putLatest(makeRecord(PRINCIPAL, {
+        audio: OTHER_AUDIO,
+        recordId: "voice_" + "2".repeat(32),
+      }));
     };
     assert.equal(await backend.getLatest({
       principal: PRINCIPAL,
       now: new Date(currentMs).toISOString(),
     }), null);
+    assert.equal(replaced, true);
     assert.equal(fake.objects.size, 1);
     const newer = await backend.getLatest({
       principal: PRINCIPAL,
@@ -534,15 +492,20 @@ test("conditional expiry deletion cannot erase a newer concurrent write",
     });
     assert.equal(newer.audio.equals(OTHER_AUDIO), true);
     assert.equal(newer.recordId, "voice_" + "2".repeat(32));
-    const deleteCall = fake.calls.find(call => call.name === "DeleteObjectCommand");
-    assert.equal(deleteCall.input.IfMatch.startsWith('"'), true);
+    for (const name of [
+      "DeleteObjectCommand",
+      "HeadObjectCommand",
+      "ListObjectsV2Command",
+    ]) {
+      assert.equal(fake.calls.some(call => call.name === name), false, name);
+    }
   });
 
-test("bounded deleteExpired performs real deletes and retains live objects",
+test("deleteExpired is lifecycle-only and never enumerates or mutates objects",
   async () => {
     resetClock();
     const fake = new FakeS3();
-    const backend = makeBackend(fake, { maxOperations: 12 });
+    const backend = makeBackend(fake);
     await backend.putLatest(makeRecord(PRINCIPAL, {
       recordId: "voice_" + "e".repeat(32),
     }));
@@ -551,48 +514,32 @@ test("bounded deleteExpired performs real deletes and retains live objects",
       recordId: "voice_" + "f".repeat(32),
     }));
     currentMs += 30_001;
+    const callsBefore = fake.calls.length;
     const result = await backend.deleteExpired({
       before: new Date(currentMs).toISOString(),
     });
-    assert.equal(result.deleted, 1);
-    assert.equal(result.scanned, 2);
-    assert.equal(fake.objects.size, 1);
-    assert.equal(fake.calls.filter(call => call.name === "DeleteObjectCommand").length, 1);
-    assert.equal(fake.calls.length <= 12, true);
+    assert.deepEqual(result, {
+      deleted: 0,
+      scanned: 0,
+      truncated: false,
+      physicalRemoval: "bucket_lifecycle_only",
+    });
+    assert.equal(fake.objects.size, 2);
+    assert.equal(fake.calls.length, callsBefore);
+    const store = createP2PrivateResultStore({
+      backend,
+      ttlSeconds: 60,
+      clock: () => new Date(currentMs),
+    });
+    assert.deepEqual(await store.deleteExpired(), {
+      deleted: 0,
+      physicalRemoval: "bucket_lifecycle_only",
+    });
+    assert.equal(fake.objects.size, 2);
+    assert.equal(fake.calls.length, callsBefore);
   });
 
-test("bounded deleteExpired advances across pages without skipping objects",
-  async () => {
-    resetClock();
-    const fake = new FakeS3();
-    const backend = makeBackend(fake, { maxOperations: 12 });
-    const principals = Array.from({ length: 9 }, (_, index) =>
-      deriveCanonicalPrincipal({
-        issuer: AUTH0_ISSUER,
-        subject: "auth0|kodo-page-" + index,
-      }));
-    for (let index = 0; index < principals.length; index += 1) {
-      await backend.putLatest(makeRecord(principals[index], {
-        recordId: "voice_" + index.toString(16).padStart(32, "0"),
-      }));
-    }
-    assert.equal(fake.objects.size, 9);
-    currentMs += 61_000;
-    const first = await backend.deleteExpired({
-      before: new Date(currentMs).toISOString(),
-    });
-    assert.equal(first.deleted, 5);
-    assert.equal(first.truncated, true);
-    assert.equal(fake.objects.size, 4);
-    const second = await backend.deleteExpired({
-      before: new Date(currentMs).toISOString(),
-    });
-    assert.equal(second.deleted, 4);
-    assert.equal(second.truncated, false);
-    assert.equal(fake.objects.size, 0);
-  });
-
-test("missing credentials, PUT ambiguity, timeout, GET and DELETE failures fail closed",
+test("missing credentials, PUT ambiguity, timeout and GET failures fail closed",
   async () => {
     resetClock();
     const fake = new FakeS3();
@@ -618,17 +565,18 @@ test("missing credentials, PUT ambiguity, timeout, GET and DELETE failures fail 
 
     fake.clearFailure();
     currentMs += 60_000;
-    fake.failOn("DeleteObjectCommand");
-    await assert.rejects(backend.getLatest({
+    assert.equal(await backend.getLatest({
       principal: PRINCIPAL,
       now: new Date(currentMs).toISOString(),
-    }), /kodo_delete_failed/);
+    }), null);
+    assert.equal(fake.objects.size, 1);
 
     fake.clearFailure();
-    fake.failOn("ListObjectsV2Command");
-    await assert.rejects(backend.deleteExpired({
+    const lifecycle = await backend.deleteExpired({
       before: new Date(currentMs).toISOString(),
-    }), /kodo_list_failed/);
+    });
+    assert.equal(lifecycle.deleted, 0);
+    assert.equal(lifecycle.physicalRemoval, "bucket_lifecycle_only");
   });
 
 test("repeated reads perform exactly one object GET each and no hidden retry",
@@ -644,6 +592,22 @@ test("repeated reads perform exactly one object GET each and no hidden retry",
     assert.equal(reads - before, 2);
     assert.equal(fake.objects.size, 1);
   });
+
+test("Kodo source has no reachable DELETE, HEAD or LIST command", async () => {
+  const source = await readFile(
+    new URL("../src/p2-kodo-private-audio-backend.js", import.meta.url),
+    "utf8",
+  );
+  for (const command of [
+    "DeleteObjectCommand",
+    "HeadObjectCommand",
+    "ListObjectsV2Command",
+  ]) {
+    assert.equal(source.includes(command), false, command);
+  }
+  assert.doesNotMatch(source, /\bIfMatch\b/);
+  assert.match(source, /bucket_lifecycle_only/);
+});
 
 test("the real AWS SDK signs one bounded Kodo request without network",
   async () => {
@@ -988,11 +952,14 @@ test("offline MCP -> explicit confirm -> Kodo backend -> owner WAV survives rest
         });
         assert.equal(expired.status, 503);
         assert.deepEqual(await expired.json(), { error: "audio_unavailable" });
-        assert.equal(fake.objects.size, 0);
-        assert.equal(
-          fake.calls.some(call => call.name === "DeleteObjectCommand"),
-          true,
-        );
+        assert.equal(fake.objects.size, 1);
+        for (const name of [
+          "DeleteObjectCommand",
+          "HeadObjectCommand",
+          "ListObjectsV2Command",
+        ]) {
+          assert.equal(fake.calls.some(call => call.name === name), false, name);
+        }
         assert.equal(providerCalls.length, 1);
       } finally {
         await restarted.close();
@@ -1120,4 +1087,28 @@ test("Kodo receipt and activation gate record evidence, limits and boundaries",
     }
     assert.equal(gate.includes("NOT EXECUTED"), false);
     assert.match(gate, /不能保证精确 24 小时删完/);
+  });
+
+test("no-CAS repair receipt preserves the lifecycle-only launch boundary",
+  async () => {
+    const receipt = await readFile(new URL(
+      "../docs/v1-closure/V1-P2-KODO-NO-CAS-DELETE-SAFETY-REPAIR-20261029.md",
+      import.meta.url,
+    ), "utf8");
+    for (const marker of [
+      "REAL_KODO_CONDITIONAL_DELETE_BLOCKED",
+      "app no longer relies on it",
+      "bucket_lifecycle_only",
+      "DeleteObjectCommand",
+      "HeadObjectCommand",
+      "ListObjectsV2Command",
+      "IfMatch",
+      "ShenShuVoiceKodoPrivateAudio",
+      "2/9",
+      "paid remains OFF",
+      "MiniMax 04",
+      "Offline PASS is not paid-live qualification",
+    ]) {
+      assert.equal(receipt.includes(marker), true, marker);
+    }
   });
