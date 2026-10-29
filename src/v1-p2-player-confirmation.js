@@ -396,6 +396,10 @@ export function createV1P2PlayerConfirmationHandler({
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Resource-Policy": "same-origin",
       "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), autoplay=()",
+      // HTML form navigation must retain its exact Origin; no-referrer makes
+      // browsers send Origin: null, which our strict same-origin guard denies.
+      // Keep referrer data inside this origin and preserve all CSRF checks.
+      "Referrer-Policy": "same-origin",
       Vary: "Cookie",
     }, renderPendingPage({ proposals: records, session, now, sessionSecret }));
   }
