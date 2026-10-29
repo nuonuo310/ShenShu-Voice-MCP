@@ -5,6 +5,8 @@
  * and cannot execute SQL. It only freezes the exact bounded future request
  * shape, read-only checks and STOP rules for a separately authorized run.
  */
+import { deriveCanonicalPrincipal } from "./canonical-principal.js";
+
 export const V1_P2_QUALIFICATION_DATABASE_UUID =
   "234913cd-8901-4607-8147-31c4a4317111";
 export const V1_P2_FORBIDDEN_DATABASE_UUID =
@@ -32,10 +34,18 @@ export function buildV1P2D1QualificationPlan({
   if (!RUN_ID.test(runId ?? "") || !validDay(day)) {
     throw new Error("invalid_v1_p2_d1_qualification_plan");
   }
-  const ownerA = "dryrun_v1p2_" + runId + "_a";
-  const ownerB = "dryrun_v1p2_" + runId + "_b";
+  // Must match the same 43-character canonical principal contract as the
+  // protected MCP/player operation store; raw test labels are not principals.
+  const ownerA = deriveCanonicalPrincipal({
+    issuer: "urn:shenshu:v1-p2:qualification-only",
+    subject: runId + ":owner-a",
+  });
+  const ownerB = deriveCanonicalPrincipal({
+    issuer: "urn:shenshu:v1-p2:qualification-only",
+    subject: runId + ":owner-b",
+  });
   const operationId = "dryop_" + runId + "_01";
-  if (![ownerA, ownerB, operationId].every(value => RUN_ID.test(value))) {
+  if (!RUN_ID.test(operationId)) {
     throw new Error("invalid_v1_p2_d1_qualification_plan");
   }
   return Object.freeze({
@@ -117,8 +127,8 @@ export function buildV1P2D1QualificationPlan({
       "PRAGMA foreign_keys;",
       "PRAGMA foreign_key_check;",
       "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name IN ('paid_voice_confirmation_operations','paid_voice_reservations','paid_voice_grants') ORDER BY name,type;",
-      "SELECT request_id,subject,day_utc,slot FROM paid_voice_reservations WHERE request_id LIKE 'dryreq_%' ORDER BY request_id;",
-      "SELECT grant_id,request_id,subject,consumed_at FROM paid_voice_grants WHERE grant_id LIKE 'drygrant_%' ORDER BY grant_id;",
+      `SELECT request_id,principal,day_utc,slot FROM paid_voice_reservations WHERE principal IN ('${ownerA}','${ownerB}') ORDER BY request_id;`,
+      `SELECT grant_id,request_id,principal,state,consumed_at FROM paid_voice_grants WHERE principal IN ('${ownerA}','${ownerB}') ORDER BY grant_id;`,
     ]),
     stopRules: Object.freeze([
       "stop_on_ambiguous_claim_or_transport",
