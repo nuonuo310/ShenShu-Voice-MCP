@@ -1,6 +1,6 @@
 /**
  * Offline review of the future real D1 and Kodo qualification plans.
- * These tests do not open a database, construct an S3 client or use a secret.
+ * These tests use only an in-memory Node24 SQLite schema. No Cloudflare API,\n * S3 client, remote database, payment, or secret is accessed.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -67,7 +67,7 @@ test("D1 qualification read-only checks compile against the real 001/002/004/005
   assert.match(plan.ownerA, CANONICAL_PRINCIPAL_PATTERN);
   assert.match(plan.ownerB, CANONICAL_PRINCIPAL_PATTERN);
   assert.notEqual(plan.ownerA, plan.ownerB);
-  assert.doesNotMatch(plan.readOnlySql.join("\\n"), /\\bsubject\\b|dryreq_|drygrant_/);
+  assert.doesNotMatch(plan.readOnlySql.join("\n"), /\bsubject\b|dryreq_|drygrant_/);
   for (const sql of plan.readOnlySql.slice(-2)) {
     assert.ok(sql.includes(plan.ownerA));
     assert.ok(sql.includes(plan.ownerB));
