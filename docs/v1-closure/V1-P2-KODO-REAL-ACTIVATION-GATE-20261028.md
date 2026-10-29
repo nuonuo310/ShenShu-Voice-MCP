@@ -31,10 +31,10 @@
 建议硬上限：**2 次 PUT、3 次 GET、3 次 HEAD、2 次条件 DELETE，全部最多 10 个对象请求**（若探针步骤需要超过上限立即停止）；**每次 PUT 的完整密文信封不超过 256 KiB、累计 GET 响应正文不超过 768 KiB、测试窗口 15 分钟、0 自动重试、0 额外 Bucket、0 provider 调用**。与环境探针无关的 LIST/清理/失败后重试一律不做。若响应模糊，STOP，先只读确认，不以增加次数掩盖错误。
 
 固定检验：
-1. 使用后端将 synthetic 对象 A PUT 到单一 key；GET/HEAD 得到 A 与 ETag_A。
-2. 将不同 synthetic 对象 B PUT 到**相同 key**；GET/HEAD 验证 B 与 ETag_B 不同。
-3. 用 `DELETE Object` 带旧 `If-Match: ETag_A` 请求；**必须返回 412 Precondition Failed 或明确等价拒绝**，随后 GET/HEAD 仍应确认 B 存在且 ETag 未变。若 Kodo 忽略 header、返回 2xx、误删 B 或状态不可判定 → **立即 STOP，不运行真正自动清理**，转总控决定替代安全删除策略。
-4. 只有负例通过，才允许以 `If-Match: ETag_B` 删除 B 并证实对象不可再读取。若 GET/HEAD 404，结果仅证明该测试对象消失；不能外推完整 bucket 生命周期和计费结算。
+1. 使用后端将 synthetic 对象 A PUT 到单一 key；**一次 HEAD** 取得 ETag_A。
+2. 将不同 synthetic 对象 B PUT 到**相同 key**；**一次 HEAD** 取得 ETag_B，必须与 ETag_A 不同。
+3. 用 `DELETE Object` 带旧 `If-Match: ETag_A` 请求；**必须返回 412 Precondition Failed 或明确等价拒绝**。接着**一次 GET** 确认 B 的完整密文仍可解密、其数据与 B 相符。若 Kodo 忽略 header、返回 2xx、误删 B 或状态不可判定 → **立即 STOP，不运行真正自动清理**，转总控决定替代安全删除策略。
+4. 只有负例通过，才允许以 `If-Match: ETag_B` 删除 B 并用**一次 GET** 确认 404。结果只证明该测试对象消失；不能外推完整 bucket 生命周期和计费结算。
 5. 审查服务器响应与可见日志无 AK/SK/Principal、原始 WAV、合成音频或公开临时 object URL；分清访问 TTL 与物理删除/计费保留。
 
 **NOTE:** 上述“10 请求”按 S3 对象请求计算；内部 SDK/预检实际发生的请求如果超额也应 STOP。须先能以无秘密方式观测这些计数，不能只写报告口头保证。真实 provider/model 仍为零。
