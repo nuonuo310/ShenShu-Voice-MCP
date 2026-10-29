@@ -18,9 +18,15 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: package.json
-      - run: npm install --ignore-scripts --no-audit --no-fund
+          cache-dependency-path: package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
       - run: node --check server.js
       - run: node --check src/minimax-adapter.js
+      - run: node --check src/v1-p2-controlled-staging-candidate.js
+      - run: node --check src/p2-kodo-private-audio-backend.js
+      - run: node --check src/v1-p2-d1-qualification-plan.js
+      - run: node --check src/v1-kodo-qualification-plan.js
       - run: npm test
       - run: node test/smoke-server.mjs

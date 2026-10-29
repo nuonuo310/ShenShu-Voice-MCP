@@ -50,8 +50,12 @@ export const CONTROLLED_STAGING_PRIVATE_AUDIO_FLAG =
   "SHENSHU_STAGING_PRIVATE_AUDIO_ENABLED";
 export const CONTROLLED_STAGING_APPROVED_SHA_ENV =
   "SHENSHU_STAGING_APPROVED_SHA";
+// Legacy operator-writable value. It is intentionally never consulted as a
+// deployment identity; real deployments use RENDER_GIT_COMMIT and tests must
+// pass the explicit currentSha fixture argument.
 export const CONTROLLED_STAGING_RUNTIME_SHA_ENV =
   "SHENSHU_STAGING_RUNTIME_SHA";
+export const PLATFORM_COMMIT_ENV = "RENDER_GIT_COMMIT";
 export const KODO_BUCKET_ENV = "SHENSHU_KODO_BUCKET";
 export const KODO_ACCESS_KEY_ENV = "SHENSHU_KODO_ACCESS_KEY_ID";
 export const KODO_SECRET_KEY_ENV = "SHENSHU_KODO_SECRET_ACCESS_KEY";
@@ -147,9 +151,29 @@ export function assessV1P2ControlledStagingConfig(
   if (env?.[CONTROLLED_STAGING_APPROVED_SHA_ENV] !== expectedSha) {
     return "staging_sha_not_approved";
   }
-  const runtimeSha = currentSha ?? env?.[CONTROLLED_STAGING_RUNTIME_SHA_ENV];
-  if (!validSha(runtimeSha) || runtimeSha !== expectedSha) {
-    return "runtime_sha_mismatch";
+  const testMode = env?.NODE_ENV === "test";
+  if (!testMode && currentSha !== undefined) {
+    return "test_sha_injection_forbidden";
+  }
+  if (!testMode && env?.SHENSHU_AUTH_STATIC_JWKS_TEST_ONLY === "1") {
+    return "static_test_jwks_forbidden";
+  }
+  // Outside tests the only accepted running identity is the platform-provided
+  // Render deployment commit. Even in tests the explicit currentSha fixture is
+  // accepted; no operator-writable environment value can self-attest a deploy.
+  const runtimeSha = testMode
+    ? (currentSha ??
+       env?.[PLATFORM_COMMIT_ENV])
+    : env?.[PLATFORM_COMMIT_ENV];
+  if (!validSha(runtimeSha)) {
+    return testMode
+      ? "staging_runtime_sha_required"
+      : "render_git_commit_required";
+  }
+  if (runtimeSha !== expectedSha) {
+    return testMode
+      ? "runtime_sha_mismatch"
+      : "render_git_commit_mismatch";
   }
   if (!configured(env?.[MINIMAX_API_KEY_ENV], MAX_PROVIDER_KEY_BYTES)) {
     return "provider_key_invalid";
