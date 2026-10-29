@@ -1102,19 +1102,22 @@ test("Kodo receipt and activation gate record evidence, limits and boundaries",
       "../docs/v1-closure/V1-P2-KODO-REAL-ACTIVATION-GATE-20261028.md",
       import.meta.url,
     ), "utf8");
+    // The one real synthetic qualification has now been consumed and STOPPED
+    // after a stale ETag DELETE was unexpectedly accepted. The old
+    // NOT EXECUTED activation checklist must never mask this result.
     for (const marker of [
-      "NOT EXECUTED",
-      "Singapore",
-      "private bucket",
-      "2 MiB",
-      "60-300 seconds",
-      "egress",
-      "kill switch",
-      "PUT",
-      "DELETE",
-      "real 04 voice",
+      "2026-10-29 真实 A2 终态：STOP",
+      "stale_etag_delete_was_accepted_stop_now",
+      "不能再按照下文未执行的规划步骤重试",
+      "ETag_A",
+      "私有",
+      "2/9",
+      "AK/SK",
+      "1 天",
+      "不能把此 STOP 说成 PASS",
     ]) {
       assert.equal(gate.includes(marker), true, marker);
     }
-    assert.match(gate, /do not describe kodo as free/i);
+    assert.equal(gate.includes("NOT EXECUTED"), false);
+    assert.match(gate, /不能将此推成精确时间物理删/);
   });
