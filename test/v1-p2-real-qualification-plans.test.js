@@ -4,6 +4,9 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
+import { CANONICAL_PRINCIPAL_PATTERN } from "../src/canonical-principal.js";
 import {
   V1_P2_FORBIDDEN_DATABASE_UUID,
   V1_P2_QUALIFICATION_DATABASE_UUID,
@@ -57,6 +60,37 @@ test("D1 004+005 plan is bounded, read-only and covers all required failures", (
     plan.readOnlySql.join("\n"),
     /\b(?:ALTER|DROP|TRUNCATE|DELETE|UPDATE|INSERT)\b/i,
   );
+});
+
+test("D1 qualification read-only checks compile against the real 001/002/004/005 local schema", async () => {
+  const plan = buildV1P2D1QualificationPlan({ runId: RUN_ID, day: DAY });
+  assert.match(plan.ownerA, CANONICAL_PRINCIPAL_PATTERN);
+  assert.match(plan.ownerB, CANONICAL_PRINCIPAL_PATTERN);
+  assert.notEqual(plan.ownerA, plan.ownerB);
+  assert.doesNotMatch(plan.readOnlySql.join("\\n"), /\\bsubject\\b|dryreq_|drygrant_/);
+  for (const sql of plan.readOnlySql.slice(-2)) {
+    assert.ok(sql.includes(plan.ownerA));
+    assert.ok(sql.includes(plan.ownerB));
+  }
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec("PRAGMA foreign_keys = ON;");
+    for (const file of [
+      "001_paid_voice_reservations.sql",
+      "002_paid_voice_grants.sql",
+      "004_paid_voice_confirmation_operations.sql",
+      "005_paid_voice_confirmation_private_text_sealing.sql",
+    ]) {
+      const sql = await readFile(new URL("../db/d1/" + file, import.meta.url), "utf8");
+      db.exec(sql);
+    }
+    for (const sql of plan.readOnlySql) {
+      // This verifies actual column names and SQL syntax without any live D1 I/O.
+      assert.doesNotThrow(() => db.prepare(sql).all(), sql);
+    }
+  } finally {
+    db.close();
+  }
 });
 
 test("D1 plan rejects invalid IDs and forged unsafe plans", () => {
