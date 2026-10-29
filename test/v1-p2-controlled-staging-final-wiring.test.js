@@ -5,7 +5,8 @@
  * confirmation, sealed D1 004+005 atomic claim, fixed MiniMax adapter behind an
  * injected fake transport, and the Kodo lifecycle private-audio backend behind
  * an in-memory S3 protocol double. No real MiniMax, D1, Kodo, Render, IAM,
- * Call or human browser gesture is used. server.js never imports the candidate.
+ * Call or human browser gesture is used. The normal server imports the paid
+ * candidate only when every independent startup gate is ready.
  */
 process.env.NODE_ENV = "test";
 
@@ -38,11 +39,15 @@ import {
   KODO_SECRET_KEY_ENV,
   MINIMAX_API_KEY_ENV,
   MINIMAX_VOICE_ID_ENV,
+  PLATFORM_COMMIT_ENV,
   PRIVATE_AUDIO_TTL_ENV,
+  V1_FIXED_VOICE_ID,
   assessV1P2ControlledStagingConfig,
   createV1P2ControlledStagingCandidate,
 } from "../src/v1-p2-controlled-staging-candidate.js";
 import { PRIVATE_TEXT_MASTER_KEY_ENV } from "../src/v1-p2-staging-sealed-closure.js";
+
+const { createShenShuRuntimeServer } = await import("../server.js");
 
 const sqliteModule = (() => {
   try {
@@ -63,7 +68,7 @@ const APPROVED_SHA = "a".repeat(40);
 const OTHER_SHA = "b".repeat(40);
 const SESSION_SECRET = "final-wiring-session-secret-0123456789abcdef012345";
 const CLIENT_ID = "w".repeat(32);
-const VOICE_ID = "voice_final_wiring_fixture_001";
+const VOICE_ID = V1_FIXED_VOICE_ID;
 const API_KEY = "test-only-minimax-key-0123456789abcdef";
 const BUCKET = "shenshu-private-fixture";
 const SUBJECT = "auth0|final-wiring-owner";
@@ -75,6 +80,11 @@ const KODO_MASTER_KEY = Buffer.from(
   Array.from({ length: 32 }, (_, index) => index + 77),
 );
 const FIXTURE = Buffer.from(makeInlineToneFixture().audioBase64, "base64");
+// Keep the synthetic private WAV byte-distinct from the P1 fixed WAV so an
+// accidental fall-through to /player/audio cannot satisfy the owner assertion.
+for (let index = 44; index < Math.min(FIXTURE.length, 52); index++) {
+  FIXTURE[index] ^= 0xa5;
+}
 const PRINCIPAL = deriveCanonicalPrincipal({
   issuer: AUTH0_ISSUER,
   subject: SUBJECT,
@@ -322,21 +332,21 @@ async function makeWorld({
     calls: providerCalls,
     mode: providerMode,
   });
-  const candidate = await createV1P2ControlledStagingCandidate({
+  const runtime = await createShenShuRuntimeServer({
     env,
-    expectedSha,
-    currentSha,
     d1Client: d1Client ?? fixture.client,
+    currentSha,
     s3Client: s3Client ?? fake,
     fetchImpl: provider,
     clock: clock ?? (() => new Date(currentMs)),
     ...(operationTtlMs === undefined ? {} : { operationTtlMs }),
   });
-  assert.ok(candidate, "candidate_must_be_ready");
-  assert.equal(candidate.code, "final_wiring_ready");
-  assert.equal(candidate.paidConfirmMounted, true);
-  assert.equal(candidate.staticTestJwks, true);
-  const base = await listen(candidate.server);
+  assert.equal(env[CONTROLLED_STAGING_APPROVED_SHA_ENV], expectedSha);
+  assert.equal(runtime.paidConfirmMounted, true, runtime.paidStartupCode);
+  assert.equal(runtime.paidStartupCode, "final_wiring_ready");
+  assert.equal(runtime.sealedProposalEnabled, true);
+  assert.equal(runtime.staticTestJwks, true);
+  const base = await listen(runtime.server);
   return {
     base,
     env,
@@ -344,10 +354,10 @@ async function makeWorld({
     fake,
     providerCalls,
     provider,
-    candidate,
+    runtime,
     async close() {
-      candidate.server.closeAllConnections?.();
-      await new Promise(resolve => candidate.server.close(resolve));
+      runtime.server.closeAllConnections?.();
+      await new Promise(resolve => runtime.server.close(resolve));
     },
   };
 }
@@ -533,7 +543,7 @@ function assertNoForbiddenS3(fake) {
   }
 }
 
-test("candidate completes one synthetic paid-to-private journey",
+test("normal server completes one synthetic paid-to-private journey",
   { skip: sqliteSkip }, async () => {
     resetClock();
     alignClockToRealTime();
@@ -1179,6 +1189,13 @@ test("candidate is null unless every independent gate and exact SHA is present",
       assert.equal(
         assessV1P2ControlledStagingConfig({
           ...readyEnv,
+          [MINIMAX_VOICE_ID_ENV]: "voice_not_the_frozen_04",
+        }, { expectedSha: APPROVED_SHA, currentSha: APPROVED_SHA }),
+        "provider_voice_not_04",
+      );
+      assert.equal(
+        assessV1P2ControlledStagingConfig({
+          ...readyEnv,
           [KODO_BUCKET_ENV]: "bad..bucket",
         }, { expectedSha: APPROVED_SHA, currentSha: APPROVED_SHA }),
         "kodo_bucket_invalid",
@@ -1290,9 +1307,25 @@ test("candidate is null unless every independent gate and exact SHA is present",
 
 test("deployable server keeps confirm closed and P1 public surfaces intact",
   { skip: sqliteSkip }, async () => {
-    const { createShenShuHttpServer } = await import("../server.js");
-    const server = createShenShuHttpServer({ env: baseEnv() });
-    const base = await listen(server);
+    const fixture = await makeFixture();
+    const offEnv = baseEnv();
+    for (const key of [
+      CONTROLLED_STAGING_FINAL_WIRING_FLAG,
+      CONTROLLED_STAGING_PAID_CONFIRM_FLAG,
+      CONTROLLED_STAGING_REAL_PROVIDER_FLAG,
+      CONTROLLED_STAGING_PRIVATE_AUDIO_FLAG,
+    ]) delete offEnv[key];
+    const runtime = await createShenShuRuntimeServer({
+      env: offEnv,
+      d1Client: fixture.client,
+      fetchImpl: () => {
+        throw new Error("network_disabled_in_offline_test");
+      },
+    });
+    assert.equal(runtime.paidConfirmMounted, false);
+    assert.equal(runtime.paidStartupCode, "final_wiring_flag_off");
+    assert.equal(runtime.sealedProposalEnabled, true);
+    const base = await listen(runtime.server);
     try {
       for (const method of ["GET", "POST"]) {
         const response = await fetch(base + "/player/confirm", {
@@ -1352,12 +1385,14 @@ test("deployable server keeps confirm closed and P1 public surfaces intact",
       assert.equal(fixed.toString("ascii", 0, 4), "RIFF");
       assert.equal(fixed.toString("ascii", 8, 12), "WAVE");
     } finally {
-      server.closeAllConnections?.();
-      await new Promise(resolve => server.close(resolve));
+      runtime.server.closeAllConnections?.();
+      await new Promise(resolve => runtime.server.close(resolve));
+      fixture.db.close();
     }
 
     const source = await readFile(new URL("../server.js", import.meta.url), "utf8");
-    assert.doesNotMatch(source, /v1-p2-controlled-staging-candidate/);
+    assert.match(source, /v1-p2-controlled-staging-candidate/);
+    assert.match(source, /paidConfirmation\.handleRequest/);
     assert.doesNotMatch(source, /p2-kodo-private-audio-backend/);
     assert.doesNotMatch(source, /v1-p2-offline-confirm-runtime/);
     const candidateSource = await readFile(new URL(
@@ -1366,6 +1401,79 @@ test("deployable server keeps confirm closed and P1 public surfaces intact",
     ), "utf8");
     assert.doesNotMatch(candidateSource,
       /DeleteObjectCommand|HeadObjectCommand|ListObjects|IfMatch|getSignedUrl|presign/i);
+  });
+
+test("normal server fails closed for partial and invalid paid gates",
+  { skip: sqliteSkip }, async () => {
+    const cases = [
+      [
+        "partial flags",
+        { ...baseEnv(), [CONTROLLED_STAGING_PAID_CONFIRM_FLAG]: "0" },
+        true,
+        "paid_confirm_flag_off",
+      ],
+      [
+        "wrong staging origin",
+        { ...baseEnv(), SHENSHU_STAGING_ORIGIN: "https://evil.example" },
+        true,
+        "staging_identity_invalid",
+      ],
+      [
+        "missing provider key",
+        without(baseEnv(), MINIMAX_API_KEY_ENV),
+        true,
+        "provider_key_invalid",
+      ],
+      [
+        "wrong production commit",
+        {
+          ...without(baseEnv(), "SHENSHU_AUTH_STATIC_JWKS_TEST_ONLY"),
+          NODE_ENV: "production",
+          [PLATFORM_COMMIT_ENV]: OTHER_SHA,
+        },
+        true,
+        "render_git_commit_mismatch",
+      ],
+      [
+        "missing D1 005 schema",
+        baseEnv(),
+        false,
+        "paid_runtime_unavailable",
+      ],
+    ];
+
+    for (const [name, env, include005, expectedCode] of cases) {
+      const fixture = await makeFixture({ include005 });
+      const runtime = await createShenShuRuntimeServer({
+        env,
+        d1Client: fixture.client,
+        currentSha: env.NODE_ENV === "test" ? APPROVED_SHA : undefined,
+        fetchImpl: () => {
+          throw new Error("network_disabled_in_offline_test");
+        },
+      });
+      const base = await listen(runtime.server);
+      try {
+        assert.equal(runtime.paidConfirmMounted, false, name);
+        assert.equal(runtime.paidStartupCode, expectedCode, name);
+        for (const method of ["GET", "POST"]) {
+          const response = await fetch(base + "/player/confirm", {
+            method,
+            headers: method === "POST"
+              ? { "content-type": "application/x-www-form-urlencoded" }
+              : {},
+            body: method === "POST"
+              ? "handle=" + "h".repeat(43)
+              : undefined,
+          });
+          assert.equal(response.status, 404, name + " " + method);
+        }
+      } finally {
+        runtime.server.closeAllConnections?.();
+        await new Promise(resolve => runtime.server.close(resolve));
+        fixture.db.close();
+      }
+    }
   });
 
 test("final wiring receipt records offline limits, exact SHA and 2/9",
@@ -1389,7 +1497,14 @@ test("final wiring receipt records offline limits, exact SHA and 2/9",
       "lifecycle",
       "D1 004+005",
       "rollback",
+      "8e70d1a7bd987cdb17e9688670dc7cec785e4ce8",
       "29110e145c93be7455e6e1d5ffaec79dca7fc3c7",
+      "createShenShuRuntimeServer",
+      "GET and POST `/player/confirm` both return **404**",
+      "RENDER_GIT_COMMIT",
+      "SHENSHU_STAGING_FINAL_WIRING_ENABLED",
+      "ShenShuCN04Ziran_20261025220130",
+      "iPhone",
     ]) {
       assert.equal(receipt.includes(marker), true, marker);
     }

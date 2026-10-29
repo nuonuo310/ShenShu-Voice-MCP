@@ -1,7 +1,8 @@
 # Voice V1 P2 real go/no-go card - 2026-10-30
 
-**Status: COMPLETE (offline hardening only). BLOCKED FOR REAL CLOUD
-QUALIFICATION. Voice V1 remains 2/9 and paid voice remains paid OFF.**
+**Status: COMPLETE (offline hardening only). The gated normal-server mount is
+also implemented offline. BLOCKED FOR REAL CLOUD QUALIFICATION. Voice V1
+remains 2/9 and paid voice remains paid OFF.**
 This card is not a deployment, a paid-live qualification or a claim of
 desktop/iPhone audibility. Authority: Draft **PR #146**; scope authority
 `142f109cefeeb3c0082fd0f8c27117a1429eb5a5`. The exact delivery HEAD is the
@@ -48,8 +49,9 @@ No real D1/Kodo/MiniMax/Render environment mutation or Call operation occurred.
   Supplying that argument outside test mode returns
   `test_sha_injection_forbidden`. Static test JWKS is forbidden outside tests.
 - Any failure makes `createV1P2ControlledStagingCandidate()` return `null`;
-  it never falls back to an unprotected paid path. `server.js` still does not
-  import the candidate, and `/player/confirm` remains 404.
+  it never falls back to an unprotected paid path. `server.js` mounts the
+  candidate only through the fully gated normal startup composition; OFF or
+  partial configuration leaves `/player/confirm` at 404.
 
 ## 4. Next real qualification: two bounded lanes
 

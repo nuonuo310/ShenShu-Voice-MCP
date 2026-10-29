@@ -8,10 +8,10 @@
  * owner-scoped handle and immutable text digest before the shared P2 broker
  * performs one compare-and-set claim and at most one paid attempt.
  *
- * This module is deliberately unmounted by server.js. Its in-memory operation
- * store is a test fixture. Real D1 atomicity, player-to-MCP identity continuity,
- * durable private text/audio storage and a real browser user gesture remain
- * independent live-qualification gates.
+ * The normal server mounts this handler only through the fully gated paid
+ * candidate composition. Its in-memory operation store remains a test fixture;
+ * production wiring requires the sealed D1 004+005 store, durable private
+ * text/audio storage and a real browser user gesture.
  */
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { checkText } from "./contract.js";

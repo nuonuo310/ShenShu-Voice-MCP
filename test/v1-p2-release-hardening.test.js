@@ -1,5 +1,5 @@
 /**
- * Release-hardening guards for the dormant paid staging candidate.
+ * Release-hardening guards for the gated paid staging candidate.
  *
  * The deployment identity is the platform-provided RENDER_GIT_COMMIT. The
  * operator-writable legacy runtime SHA is deliberately ignored. Only an
@@ -24,6 +24,7 @@ import {
   MINIMAX_VOICE_ID_ENV,
   PLATFORM_COMMIT_ENV,
   PRIVATE_AUDIO_TTL_ENV,
+  V1_FIXED_VOICE_ID,
   assessV1P2ControlledStagingConfig,
 } from "../src/v1-p2-controlled-staging-candidate.js";
 import { STAGING_RESOURCE_ORIGIN } from "../src/protected-resource-identity.js";
@@ -56,7 +57,7 @@ function baseEnv(overrides = {}) {
     [KODO_BUCKET_ENV]: "shenshu-private-fixture",
     [KODO_MASTER_KEY_ENV]: MASTER_KEY,
     [MINIMAX_API_KEY_ENV]: "test-only-provider-key-0123456789",
-    [MINIMAX_VOICE_ID_ENV]: "voice_release_fixture_001",
+    [MINIMAX_VOICE_ID_ENV]: V1_FIXED_VOICE_ID,
     [PRIVATE_AUDIO_TTL_ENV]: "60",
     [PRIVATE_TEXT_MASTER_KEY_ENV]: MASTER_KEY,
     ...overrides,
@@ -172,7 +173,7 @@ test("Node24 bound and lockfile pin the reproducible production tree", async () 
   assert.equal(zod[1] > 6 || zod[2] >= 7, true);
 });
 
-test("deployable source keeps paid and destructive paths unmounted", async () => {
+test("deployable source mounts only the fully gated paid candidate", async () => {
   const server = await readFile(
     new URL("../server.js", import.meta.url),
     "utf8",
@@ -185,8 +186,12 @@ test("deployable source keeps paid and destructive paths unmounted", async () =>
     new URL("../src/v1-p2-controlled-staging-candidate.js", import.meta.url),
     "utf8",
   );
-  assert.doesNotMatch(server, /v1-p2-controlled-staging-candidate/);
+  assert.match(server, /v1-p2-controlled-staging-candidate/);
+  assert.match(server, /createV1P2ControlledStagingCandidate/);
+  assert.match(server, /paidConfirmation\.handleRequest/);
   assert.doesNotMatch(server, /p2-kodo-private-audio-backend/);
+  assert.doesNotMatch(server,
+    /DeleteObjectCommand|HeadObjectCommand|ListObjectsV2Command|IfMatch|getSignedUrl/i);
   assert.doesNotMatch(kodo,
     /DeleteObjectCommand|HeadObjectCommand|ListObjectsV2Command|IfMatch|getSignedUrl/i);
   assert.doesNotMatch(candidate,

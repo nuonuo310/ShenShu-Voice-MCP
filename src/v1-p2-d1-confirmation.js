@@ -1,6 +1,7 @@
 /**
- * Offline-only composition for the Voice V1 P2 D1 explicit-confirmation
- * candidate. It is deliberately not imported by server.js or any MCP route.
+ * Composition for the Voice V1 P2 D1 explicit-confirmation candidate. The
+ * normal server reaches it only through the fully gated paid candidate; no MCP
+ * route imports or exposes confirmation directly.
  *
  * ChatGPT MCP may only reach the shared broker's nonbillable initiate/status
  * methods through the protected JWT verifier. The standalone Auth0 player is

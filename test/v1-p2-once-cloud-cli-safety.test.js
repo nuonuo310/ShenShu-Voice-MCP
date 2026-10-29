@@ -6,17 +6,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
-const D1=new URL("../scripts/qualify-d1-cloud-once.mjs",import.meta.url);
-const KODO=new URL("../scripts/qualify-kodo-owner-once.mjs",import.meta.url);
+import { fileURLToPath } from "node:url";
+const D1=fileURLToPath(new URL("../scripts/qualify-d1-cloud-once.mjs",import.meta.url));
+const KODO=fileURLToPath(new URL("../scripts/qualify-kodo-owner-once.mjs",import.meta.url));
 
 test("real cloud CLIs are inert without explicit --run and an interactive TTY",()=>{
   for(const script of [D1,KODO]) {
-    const without=spawnSync(process.execPath,[script.pathname],{
+    const without=spawnSync(process.execPath,[script],{
       encoding:"utf8",stdio:["pipe","pipe","pipe"],timeout:5000,
     });
     assert.equal(without.status,1);
     assert.match(without.stdout,/QUALIFICATION_STOP: explicit_run_flag_required/);
-    const piped=spawnSync(process.execPath,[script.pathname,"--run"],{
+    const piped=spawnSync(process.execPath,[script,"--run"],{
       encoding:"utf8",stdio:["pipe","pipe","pipe"],timeout:5000,
     });
     assert.equal(piped.status,1);

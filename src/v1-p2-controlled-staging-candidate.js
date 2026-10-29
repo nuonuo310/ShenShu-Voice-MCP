@@ -1,6 +1,7 @@
 /**
  * Final controlled-staging candidate for the Voice V1 paid-to-private-audio
- * journey. This module is deliberately not imported by server.js.
+ * journey. The normal server imports this module only through its fully gated
+ * startup composition; every other startup path leaves the paid entry absent.
  *
  * It composes the existing verified MCP proposal, explicit owner confirmation,
  * D1 sealed atomic claim, fixed MiniMax adapter and Kodo lifecycle-only private
@@ -23,7 +24,10 @@ import {
   createP2PlayerAudioLoader,
   createP2PrivateResultStore,
 } from "./p2-private-result-store.js";
-import { handlePrivateWebPlayer } from "./private-web-player.js";
+import {
+  handlePrivateWebPlayer,
+  isPrivatePlayerPath,
+} from "./private-web-player.js";
 import {
   PAID_PATH,
   resolveProtectedResourceIdentity,
@@ -33,6 +37,7 @@ import {
   handleStagingAuthenticatedMcp,
 } from "./staging-authenticated-mcp.js";
 import { createV1P2D1Confirmation } from "./v1-p2-d1-confirmation.js";
+import { isPrivatePlayerConfirmationPath } from "./v1-p2-player-confirmation.js";
 import { createPrivateTextSealer } from "./v1-p2-private-text-sealer.js";
 import {
   PRIVATE_TEXT_MASTER_KEY_ENV,
@@ -64,6 +69,7 @@ export const KODO_MASTER_KEY_ENV = "SHENSHU_KODO_MASTER_KEY_BASE64";
 export const MINIMAX_API_KEY_ENV = "SHENSHU_MINIMAX_API_KEY";
 export const MINIMAX_VOICE_ID_ENV = "SHENSHU_MINIMAX_VOICE_ID";
 export const PRIVATE_AUDIO_TTL_ENV = "SHENSHU_PRIVATE_AUDIO_TTL_SECONDS";
+export const V1_FIXED_VOICE_ID = "ShenShuCN04Ziran_20261025220130";
 
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const BUCKET_PATTERN = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
@@ -181,6 +187,9 @@ export function assessV1P2ControlledStagingConfig(
   if (!VOICE_PATTERN.test(env?.[MINIMAX_VOICE_ID_ENV] ?? "")) {
     return "provider_voice_invalid";
   }
+  if (env?.[MINIMAX_VOICE_ID_ENV] !== V1_FIXED_VOICE_ID) {
+    return "provider_voice_not_04";
+  }
   if (!validKodoBucket(env?.[KODO_BUCKET_ENV])) return "kodo_bucket_invalid";
   if (!decodeKey32(env?.[KODO_MASTER_KEY_ENV])) return "kodo_master_key_invalid";
   if (audioTtlSecondsFrom(env?.[PRIVATE_AUDIO_TTL_ENV]) === null) {
@@ -192,7 +201,8 @@ export function assessV1P2ControlledStagingConfig(
 function createFixedMiniMaxSynthesizer({ apiKey, voiceId, fetchImpl }) {
   const fixedVoiceId = voiceId.trim();
   if (!configured(apiKey, MAX_PROVIDER_KEY_BYTES) ||
-      !VOICE_PATTERN.test(fixedVoiceId)) {
+      !VOICE_PATTERN.test(fixedVoiceId) ||
+      fixedVoiceId !== V1_FIXED_VOICE_ID) {
     throw new Error("provider_config_invalid");
   }
   return async function synthesizeFixedVoice({ text, modelId, voiceId: requestedVoiceId } = {}) {
@@ -209,7 +219,7 @@ function createFixedMiniMaxSynthesizer({ apiKey, voiceId, fetchImpl }) {
   };
 }
 
-function makeServer({
+function makeRequestHandler({
   env,
   identity,
   verifier,
@@ -218,20 +228,20 @@ function makeServer({
   fetchImpl,
   playerClock,
 }) {
-  return createHttpServer(async (req, res) => {
-    if (!req.url) {
-      res.writeHead(400).end("missing_url");
-      return;
-    }
-    const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+  return async function handleControlledStagingRequest(req, res, url) {
+    const pathname = url?.pathname;
+    const ownsRequest = pathname === PAID_PATH ||
+      isPrivatePlayerConfirmationPath(pathname) ||
+      isPrivatePlayerPath(pathname);
+    if (!ownsRequest) return false;
     try {
-      if (await confirmation.playerHandler.handle(req, res, url)) return;
+      if (await confirmation.playerHandler.handle(req, res, url)) return true;
       if (await handlePrivateWebPlayer(req, res, url, {
         env,
         fetchImpl,
         clock: playerClock,
         loadAudio,
-      })) return;
+      })) return true;
       if (url.pathname === PAID_PATH) {
         await handleStagingAuthenticatedMcp(req, res, {
           env,
@@ -242,13 +252,33 @@ function makeServer({
           identityVerifier: verifier,
           proposalBroker: confirmation.broker,
         });
-        return;
+        return true;
       }
-      res.writeHead(404).end("not_found");
+      // A dynamically enabled paid candidate owns every player path. If the
+      // player composition is unexpectedly unavailable, do not fall through to
+      // the fixed P1 WAV.
+      if (!res.headersSent) {
+        res.writeHead(503, { "Cache-Control": "no-store" })
+          .end("player_unavailable");
+      }
+      return true;
     } catch {
       if (!res.headersSent) res.writeHead(500).end("internal_error");
       else if (!res.writableEnded) res.end();
+      return true;
     }
+  };
+}
+
+function makeServer(handleRequest) {
+  return createHttpServer(async (req, res) => {
+    if (!req.url) {
+      res.writeHead(400).end("missing_url");
+      return;
+    }
+    const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+    if (await handleRequest(req, res, url)) return;
+    res.writeHead(404).end("not_found");
   });
 }
 
@@ -344,7 +374,7 @@ export async function createV1P2ControlledStagingCandidate({
 
     const loadAudio = createP2PlayerAudioLoader({ privateResultStore });
     const playerClock = () => clockMs(clock);
-    const server = makeServer({
+    const handleRequest = makeRequestHandler({
       env,
       identity,
       verifier,
@@ -353,10 +383,12 @@ export async function createV1P2ControlledStagingCandidate({
       fetchImpl,
       playerClock,
     });
+    const server = makeServer(handleRequest);
     return Object.freeze({
       code: "final_wiring_ready",
       paidConfirmMounted: true,
       server,
+      handleRequest,
       confirmation,
       privateResultStore,
       loadAudio,
