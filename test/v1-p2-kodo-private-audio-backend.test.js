@@ -1119,5 +1119,5 @@ test("Kodo receipt and activation gate record evidence, limits and boundaries",
       assert.equal(gate.includes(marker), true, marker);
     }
     assert.equal(gate.includes("NOT EXECUTED"), false);
-    assert.match(gate, /不能将此推成精确时间物理删/);
+    assert.match(gate, /不能保证精确 24 小时删完/);
   });
