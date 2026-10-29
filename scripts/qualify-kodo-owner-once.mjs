@@ -84,8 +84,10 @@ async function main() {
         ["PUT","GET"].includes(request.method),"unexpected_wire_target");
       req(/^AWS4-HMAC-SHA256 /.test(request?.headers?.authorization??request?.headers?.Authorization??""),"unsigned_s3_request");
       physical++;
-      try{return await handler.handle(request,options);}
-      catch{stop("kodo_transport_unknown_stop_no_retry");}
+      // Do not convert a legitimate S3 NoSuchKey/404 to a generic network
+      // error: the owner-isolation negative GET must be observable.
+      // Unexpected transport errors still STOP in audited.send() without retry.
+      return handler.handle(request,options);
     }
   };
   const real=createP2KodoS3Client({
