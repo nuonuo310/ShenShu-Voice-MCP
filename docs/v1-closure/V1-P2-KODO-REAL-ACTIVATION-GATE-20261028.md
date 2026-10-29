@@ -1,6 +1,8 @@
 # Kodo 私有音频：首次真实资格验收边界（2026-10-29）
 
-**状态（2026-10-29）：A1 已由用户亲自完成并以截图核验；用户已授权限定的 A2 单次合成数据资格试验，但尚未执行任何真实 S3 对象请求。真实 AK/SK 只能在用户本人本机的隐蔽交互终端使用；不得交给 ChatGPT、DeepSeek、GitHub、CI 或 Render。** Voice V1 仍按冻结九门禁保守记 2/9，paid P2 OFF。此文件更新的是**同一** PR #146 中既有的资格 Gate，不是新的施工包。上一轮离线 Kodo backend commit `f0142f960a68a554bb1a6e5815577857da79e393`、Node24 389/389 与正常 CI 40762439813 success；真实 Kodo **未调用**。
+**2026-10-29 真实 A2 终态：STOP / FAIL-CLOSED。已实际执行并消耗唯一一次资格试验授权。不能再按照下文未执行的规划步骤重试。** 用户终端记录步骤 1–4 PASS，步骤 5 `stale_etag_delete_was_accepted_stop_now`；旧 ETag 的条件 DELETE 没被正确拒绝，最新对象可能已删除，未验证对象现状。没有真实语音/模型/Render/D1 变更。已决定不依赖 Kodo 的 If-Match DELETE，临时关闭该已消耗的一次性 CLI，改为「安全读取 TTL + 不主动删除 + 已生效的 1 天 Kodo 前缀生命周期」模式，后续离线修复唯一授权见 `docs/construction-envelopes/2026-10-29-voice-v1-kodo-no-cas-delete-safety-repair-v1.md`。**不可删除本地试验锁、重试、手动 DELETE；不能把此 STOP 说成 PASS。**
+
+**状态（2026-10-29）：A1 已由用户亲自完成并以截图核验；用户已授权限定的 A2 单次合成数据资格试验，并已完成唯一真实试验（结果 STOP，详见上一段）。真实 AK/SK 只能在用户本人本机的隐蔽交互终端使用；不得交给 ChatGPT、DeepSeek、GitHub、CI 或 Render。** Voice V1 仍按冻结九门禁保守记 2/9，paid P2 OFF。此文件更新的是**同一** PR #146 中既有的资格 Gate，不是新的施工包。上一轮离线 Kodo backend commit `f0142f960a68a554bb1a6e5815577857da79e393`、Node24 389/389 与正常 CI 40762439813 success；真实 Kodo **未调用**。
 
 ## 权威现实与费用边界
 
