@@ -144,6 +144,9 @@ async function singleRunMarker() {
 }
 
 async function main() {
+  // PERMANENT STOP: 2026-10-29 real Kodo accepted a stale-ETag DELETE.
+  // Qualification is CLOSED; never prompt for credentials or send S3 requests.
+  stop("real_kodo_stale_etag_delete_unqualified_do_not_rerun");
   requireExactly(Number(process.versions.node.split(".")[0]) >= 24, "node_24_required");
   requireExactly(process.argv.length === 2, "no_command_line_arguments_allowed");
   requireExactly(process.stdin.isTTY && process.stdout.isTTY, "local_interactive_terminal_required");
