@@ -22,7 +22,7 @@
  * durability. A production adapter must implement the same compare-and-set
  * transitions atomically in a durable store.
  */
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { checkText, MAX_WAV_BYTES } from "./contract.js";
 import {
   requireCanonicalPrincipal,
@@ -33,26 +33,30 @@ import {
   V1_OFFLINE_MAX_DAILY_CALLS,
 } from "./v1-offline-paid-pipeline.js";
 import { STAGING_RESOURCE_ORIGIN } from "./protected-resource-identity.js";
+import {
+  DIGEST_PATTERN,
+  HANDLE_PATTERN,
+  OPERATION_ID_PATTERN,
+  P2_OPERATION_ACTION,
+  P2_OPERATION_DEFAULT_TTL_MS,
+  P2_OPERATION_MAX_TTL_MS,
+  P2_OPERATION_STATES,
+  textDigest,
+  validRecord,
+} from "./v1-p2-operation-contract.js";
 
-export const P2_OPERATION_ACTION = "generate_shenshu_voice";
-export const P2_OPERATION_DEFAULT_TTL_MS = 5 * 60 * 1000;
-export const P2_OPERATION_MAX_TTL_MS = 15 * 60 * 1000;
-export const P2_OPERATION_STATES = Object.freeze({
-  PENDING_CONFIRMATION: "pending_confirmation",
-  CONFIRMING: "confirming",
-  PROVIDER_PENDING: "provider_pending",
-  COMPLETED: "completed",
-  UNKNOWN: "unknown",
-});
+export {
+  P2_OPERATION_ACTION,
+  P2_OPERATION_DEFAULT_TTL_MS,
+  P2_OPERATION_MAX_TTL_MS,
+  P2_OPERATION_STATES,
+  validRecord,
+};
 
-const HANDLE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
-const OPERATION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const DIGEST_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const FIXED_VOICE = /^[\x21-\x7e]{1,128}$/;
 const INITIATE_KEYS = Object.freeze(["trustedRequest", "text"]);
 const STATUS_KEYS = Object.freeze(["trustedRequest", "handle"]);
 const CONFIRM_KEYS = Object.freeze(["trustedRequest", "handle", "text"]);
-const STATES = new Set(Object.values(P2_OPERATION_STATES));
 
 function hasExactKeys(value, expected) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -72,10 +76,6 @@ function nowMs(clock) {
   return ms;
 }
 
-function textDigest(text) {
-  return createHash("sha256").update(text, "utf8").digest("base64url");
-}
-
 function defaultHandle() {
   return randomBytes(32).toString("base64url");
 }
@@ -84,36 +84,11 @@ function defaultOperationId() {
   return "op_" + randomUUID().replaceAll("-", "");
 }
 
-function validRecord(record) {
-  let safeText = null;
-  try {
-    safeText = checkText(record?.text);
-  } catch {}
-  return record && typeof record === "object" && !Array.isArray(record) &&
-    record.version === 1 &&
-    record.action === P2_OPERATION_ACTION &&
-    HANDLE_PATTERN.test(record.handle ?? "") &&
-    OPERATION_ID_PATTERN.test(record.operationId ?? "") &&
-    typeof record.principal === "string" &&
-    safeText === record.text &&
-    DIGEST_PATTERN.test(record.textDigest ?? "") &&
-    Number.isSafeInteger(record.textBytes) &&
-    record.textBytes >= 1 && record.textBytes <= 800 &&
-    Buffer.byteLength(record.text, "utf8") === record.textBytes &&
-    createHash("sha256").update(record.text, "utf8").digest("base64url") ===
-      record.textDigest &&
-    record.origin === STAGING_RESOURCE_ORIGIN &&
-    Number.isSafeInteger(record.issuedAt) && record.issuedAt >= 0 &&
-    Number.isSafeInteger(record.expiresAt) &&
-    record.expiresAt > record.issuedAt &&
-    record.expiresAt - record.issuedAt <= P2_OPERATION_MAX_TTL_MS &&
-    STATES.has(record.state);
-}
-
 function validDependencies({
   resolveVerifiedPrincipal,
   operationStore,
   paidStore,
+  authorizePaidAttempt,
   synthesize,
   privateResultStore,
   voiceId,
@@ -123,14 +98,16 @@ function validDependencies({
   makeOperationId,
   operationTtlMs,
 }) {
+  const validPaidStore = paidStore &&
+    typeof paidStore.reserveAtomic === "function" &&
+    typeof paidStore.issue === "function" &&
+    typeof paidStore.consume === "function";
+  const hasAuthorizePaidAttempt = authorizePaidAttempt != null;
   return typeof resolveVerifiedPrincipal === "function" &&
     operationStore &&
     ["createPending", "get", "claim", "markProviderPending", "markCompleted", "markUnknown"]
       .every(name => typeof operationStore[name] === "function") &&
-    paidStore &&
-    typeof paidStore.reserveAtomic === "function" &&
-    typeof paidStore.issue === "function" &&
-    typeof paidStore.consume === "function" &&
+    (hasAuthorizePaidAttempt ? typeof authorizePaidAttempt === "function" : validPaidStore) &&
     typeof synthesize === "function" &&
     privateResultStore &&
     typeof privateResultStore.save === "function" &&
@@ -180,6 +157,7 @@ export function createV1P2StableOperationBroker(options = {}) {
     resolveVerifiedPrincipal,
     operationStore,
     paidStore,
+    authorizePaidAttempt = null,
     synthesize,
     privateResultStore,
     voiceId,
@@ -194,6 +172,7 @@ export function createV1P2StableOperationBroker(options = {}) {
     resolveVerifiedPrincipal,
     operationStore,
     paidStore,
+    authorizePaidAttempt,
     synthesize,
     privateResultStore,
     voiceId,
@@ -424,6 +403,20 @@ export function createV1P2StableOperationBroker(options = {}) {
             return Object.freeze({ verified: true, subject: actual });
           },
           store: paidStore,
+          authorize: authorizePaidAttempt
+            ? async ({ textBytes }) => {
+              const admission = await authorizePaidAttempt({
+                principal,
+                handle: input.handle,
+                operationId,
+                textDigest: digest,
+                textBytes,
+                now: nowMs(clock),
+              });
+              observedPrincipal = admission?.principal ?? null;
+              return admission;
+            }
+            : undefined,
           synthesize,
           voiceId: fixedVoiceId,
           maximumDailyCalls,

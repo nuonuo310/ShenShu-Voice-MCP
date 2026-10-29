@@ -29,7 +29,12 @@ function reply(res, status, headers, body) {
 }
 
 /** Returns true only if a route was handled. No secrets or request body read. */
-export async function handleProtectedResourceShell(req, res, pathname, {env = process.env} = {}) {
+export async function handleProtectedResourceShell(req, res, pathname, {
+  env = process.env,
+  proposalBroker = null,
+  jwksCache = runtimeJwksCache,
+  identityVerifier = null,
+} = {}) {
   const isMetadataRoute=pathname === RESOURCE_METADATA_PATH;
   const isPaidRoute=pathname === PAID_PATH;
   if (!isMetadataRoute && !isPaidRoute) return false;
@@ -65,7 +70,9 @@ export async function handleProtectedResourceShell(req, res, pathname, {env = pr
       await handleStagingAuthenticatedMcp(req,res,{
         env,issuer:identity.issuer,audience:identity.paidResource,
         resourceMetadataUrl:identity.resourceMetadataUrl,
-        jwksCache:env.SHENSHU_AUTH_PUBLIC_JWKS_JSON ? null : runtimeJwksCache
+        jwksCache:env.SHENSHU_AUTH_PUBLIC_JWKS_JSON ? null : jwksCache,
+        identityVerifier,
+        proposalBroker:identity.staging ? proposalBroker : null
       });
       return true;
     }

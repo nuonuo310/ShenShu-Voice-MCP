@@ -12,7 +12,16 @@ import { checkText } from "./src/contract.js";
 import { makeInlineToneFixture } from "./src/inline-fixture.js";
 import { handleProtectedResourceShell } from "./src/protected-resource-shell.js";
 import { handlePrivateWebPlayer } from "./src/private-web-player.js";
+import { PRIVATE_PLAYER_PENDING_PATH } from "./src/v1-p2-readonly-player-pending.js";
 import { createD1AdmissionDryRun } from "./src/d1-admission-dry-run.js";
+import { resolveProtectedResourceIdentity } from "./src/protected-resource-identity.js";
+import { createCloudflareD1Http } from "./src/cloudflare-d1-http.js";
+import { composeV1P2StagingRuntime } from "./src/v1-p2-staging-runtime.js";
+import {
+  CONTROLLED_STAGING_APPROVED_SHA_ENV,
+  assessV1P2ControlledStagingConfig,
+  createV1P2ControlledStagingCandidate,
+} from "./src/v1-p2-controlled-staging-candidate.js";
 
 const MCP_PATH = "/mcp";
 const TONE_PATH = "/test-tone.wav";
@@ -172,20 +181,76 @@ export function createShenShuServer() {
   return server;
 }
 
-const port = Number(process.env.PORT ?? 8787);
+export function createShenShuHttpServer({
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+  nonbillableClosure = null,
+  paidConfirmation = null,
+  protectedResourceJwksCache = undefined,
+  protectedResourceIdentityVerifier = null,
+} = {}) {
+  if (nonbillableClosure !== null &&
+      (!nonbillableClosure ||
+       typeof nonbillableClosure.broker?.initiate !== "function" ||
+       typeof nonbillableClosure.broker?.status !== "function" ||
+       typeof nonbillableClosure.pendingHandler?.handle !== "function")) {
+    throw new Error("nonbillable_closure_invalid");
+  }
+  if (paidConfirmation !== null &&
+      (!paidConfirmation ||
+       typeof paidConfirmation.handleRequest !== "function" ||
+       paidConfirmation.paidConfirmMounted !== true)) {
+    throw new Error("paid_confirmation_invalid");
+  }
+  // Trusted server-side injection only. The MCP/player bridge also requires an
+  // explicit staging flag, the exact staging resource identity and the existing
+  // player guard. No query, form, header or tool argument can enable it.
+  // This process still requires a trusted server-side closure injection. The
+  // separate staging sealed-composition candidate needs an explicit secret,
+  // D1 configuration and 005 schema preflight; a boolean flag alone can never
+  // fall back to plaintext or an in-memory store.
+  const identity = resolveProtectedResourceIdentity(env);
+  const activeClosure = nonbillableClosure !== null &&
+    env.SHENSHU_NONBILLABLE_PLAYER_ENABLED === "1" &&
+    env.SHENSHU_PLAYER_ENABLED === "1" &&
+    identity.ok === true && identity.staging === true
+    ? nonbillableClosure
+    : null;
 
-export const httpServer = createHttpServer(async (req, res) => {
+  return createHttpServer(async (req, res) => {
   if (!req.url) {
     res.writeHead(400).end("missing_url");
     return;
   }
   const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
 
+  // The fully gated candidate is mounted before both the read-only pending
+  // handler and the fixed P1 player. That ordering is deliberate: when paid
+  // wiring is active, owner /player/pending must render the explicit form and
+  // /player/audio must load the owner-scoped private result instead of the P1
+  // fixed WAV. A disabled candidate is never injected, so this branch is absent
+  // in the default/partial configuration and /player/confirm stays 404.
+  if (paidConfirmation &&
+      await paidConfirmation.handleRequest(req, res, url)) return;
+
+  // Read-only owner view for the nonbillable proposal bridge. It never renders
+  // a confirmation form and never imports a paid handler.
+  // Hard path guard: even if a future injection supplies a handler that also
+  // knows /player/confirm, the deployable server never mounts that route.
+  if (activeClosure &&
+      url.pathname === PRIVATE_PLAYER_PENDING_PATH &&
+      await activeClosure.pendingHandler.handle(req, res, url)) return;
+
   // Standalone staging player. Disabled by default and never mounted in production mode.
-  if (await handlePrivateWebPlayer(req, res, url)) return;
+  if (await handlePrivateWebPlayer(req, res, url, { env, fetchImpl })) return;
 
   // Staging auth resource: denies ALL paid calls, never creates an MCP session.
-  if (await handleProtectedResourceShell(req, res, url.pathname)) return;
+  if (await handleProtectedResourceShell(req, res, url.pathname, {
+    env,
+    proposalBroker: activeClosure?.broker ?? null,
+    jwksCache: protectedResourceJwksCache,
+    identityVerifier: protectedResourceIdentityVerifier,
+  })) return;
 
   if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
     res.writeHead(204, {
@@ -244,10 +309,88 @@ export const httpServer = createHttpServer(async (req, res) => {
   }
 
   res.writeHead(404).end("not_found");
-});
+  });
+}
+
+/**
+ * Normal runtime entry. Tests and the deploy process both use this exact
+ * composition so a manually injected closure cannot mask a startup path that
+ * would always stay null. Only nonsecret booleans and a coarse code leave here.
+ */
+export async function createShenShuRuntimeServer({
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+  createD1Client = createCloudflareD1Http,
+  d1Client,
+  s3Client,
+  currentSha,
+  clock,
+  operationTtlMs,
+} = {}) {
+  const createComposedD1Client = d1Client === undefined
+    ? createD1Client
+    : () => d1Client;
+  const composed = await composeV1P2StagingRuntime({
+    env,
+    fetchImpl,
+    createD1Client: createComposedD1Client,
+  });
+  const expectedSha = env?.[CONTROLLED_STAGING_APPROVED_SHA_ENV];
+  const paidCandidate = await createV1P2ControlledStagingCandidate({
+    env,
+    expectedSha,
+    currentSha,
+    d1Client,
+    s3Client,
+    fetchImpl,
+    jwksCache: composed.jwksCache,
+    createD1Client: createComposedD1Client,
+    ...(clock === undefined ? {} : { clock }),
+    ...(operationTtlMs === undefined ? {} : { operationTtlMs }),
+  });
+  let paidStartupCode = paidCandidate?.code ?? "paid_wiring_unavailable";
+  if (!paidCandidate) {
+    const assessed = assessV1P2ControlledStagingConfig(env, {
+      expectedSha,
+      currentSha,
+    });
+    paidStartupCode = assessed === "final_wiring_ready"
+      ? "paid_runtime_unavailable"
+      : assessed;
+  }
+  const server = createShenShuHttpServer({
+    env,
+    fetchImpl,
+    nonbillableClosure: composed.nonbillableClosure,
+    paidConfirmation: paidCandidate,
+    protectedResourceJwksCache: composed.jwksCache,
+    protectedResourceIdentityVerifier: composed.identityVerifier,
+  });
+  return Object.freeze({
+    server,
+    sealedProposalEnabled: composed.sealedProposalEnabled === true,
+    sealedStartupCode: composed.code,
+    staticTestJwks: composed.staticTestJwks === true,
+    paidConfirmMounted: paidCandidate !== null,
+    paidStartupCode,
+  });
+}
+
+export const httpServer = createShenShuHttpServer();
 
 if (process.env.NODE_ENV !== "test") {
-  httpServer.listen(port, () => {
+  const port = Number(process.env.PORT ?? 8787);
+  const runtime = await createShenShuRuntimeServer({ env: process.env }).catch(() => ({
+    // A startup composition failure still serves P1 only; there is no
+    // plaintext D1 or in-memory proposal fallback.
+    server: createShenShuHttpServer({ env: process.env }),
+    sealedProposalEnabled: false,
+    sealedStartupCode: "startup_exception",
+    staticTestJwks: false,
+    paidConfirmMounted: false,
+    paidStartupCode: "startup_exception",
+  }));
+  runtime.server.listen(port, () => {
     console.log(`ShenShu Voice MCP P1-MOCK listening on http://localhost:${port}${MCP_PATH}`);
     // Diagnostic emits booleans only: no credential values, OAuth subjects or network calls.
     const env = process.env;
@@ -258,7 +401,15 @@ if (process.env.NODE_ENV !== "test") {
       dry_run_flag_enabled: dryRunEnabled,
       d1_config_accepted: dryRunRegistered,
       d1_tool_registered: env.SHENSHU_AUTH_MCP_ENABLED === "1" && dryRunRegistered,
-      paid_voice_enabled: false
+      paid_voice_enabled: runtime.paidConfirmMounted === true
+    }));
+    console.log("shenshu_staging_sealed_startup " + JSON.stringify({
+      sealed_proposal_enabled: runtime.sealedProposalEnabled,
+      sealed_startup_code: runtime.sealedStartupCode,
+      static_test_jwks: runtime.staticTestJwks,
+      paid_confirm_mounted: runtime.paidConfirmMounted === true,
+      paid_startup_code: runtime.paidStartupCode,
+      paid_voice_enabled: runtime.paidConfirmMounted === true
     }));
   });
 }

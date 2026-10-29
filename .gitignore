@@ -1,0 +1,22 @@
+# Dependencies and local runtime state
+node_modules/
+coverage/
+.nyc_output/
+.cache/
+tmp/
+*.log
+
+# Credentials and private environment configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local scratch databases and transcripts, not committed artifacts
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
