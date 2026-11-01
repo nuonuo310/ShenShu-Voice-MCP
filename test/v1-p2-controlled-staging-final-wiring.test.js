@@ -20,6 +20,10 @@ import { deriveCanonicalPrincipal } from "../src/canonical-principal.js";
 import { makeInlineToneFixture } from "../src/inline-fixture.js";
 import { MINIMAX_ENDPOINT } from "../src/minimax-adapter.js";
 import {
+  createP2KodoS3Client,
+  KODO_S3_ENDPOINT,
+} from "../src/p2-kodo-private-audio-backend.js";
+import {
   AUTH0_ISSUER,
   STAGING_RESOURCE_ORIGIN,
 } from "../src/protected-resource-identity.js";
@@ -809,6 +813,128 @@ test("FFmpeg-like nonseekable provider WAV reaches encrypted private owner playe
     } finally {
       await world.close();
       world.fixture.db.close();
+    }
+  });
+
+test("normal-server private 04 journey signs actual SDK PUT/GET bytes on fake Kodo HTTP wire",
+  { skip: sqliteSkip }, async () => {
+    resetClock();
+    alignClockToRealTime();
+    const objects = new Map();
+    const requests = [];
+    const requestHandler = {
+      async handle(request) {
+        const headers = request.headers ?? {};
+        const method = request.method;
+        requests.push({
+          method,
+          hostname: request.hostname,
+          path: request.path,
+          headers: { ...headers },
+        });
+        assert.equal(request.hostname, new URL(KODO_S3_ENDPOINT).hostname);
+        assert.match(request.path, new RegExp("^/" + BUCKET + "/"));
+        assert.match(headers.authorization, /^AWS4-HMAC-SHA256 /);
+        assert.match(headers.authorization, /\/ap-southeast-1\/s3\/aws4_request/);
+        assert.equal("x-amz-acl" in headers, false);
+        if (method === "PUT") {
+          const body = request.body;
+          let bytes;
+          if (body instanceof Uint8Array) bytes = Buffer.from(body);
+          else if (body && typeof body[Symbol.asyncIterator] === "function") {
+            const chunks = [];
+            for await (const chunk of body) chunks.push(Buffer.from(chunk));
+            bytes = Buffer.concat(chunks);
+          } else throw new Error("unexpected_sdk_body_shape");
+          assert.ok(bytes.length > 44 && bytes.length < 2 * 1024 * 1024);
+          assert.equal(Number(headers["content-length"]), bytes.length);
+          assert.equal(headers["content-type"], "application/octet-stream");
+          assert.equal(bytes.includes(FIXTURE), false);
+          assert.equal(bytes.includes(Buffer.from(PRINCIPAL)), false);
+          objects.set(request.path, {
+            body: bytes,
+            metadata: Object.fromEntries(Object.entries(headers).filter(
+              ([key]) => key.startsWith("x-amz-meta-"),
+            )),
+          });
+          return { response: {
+            statusCode: 200, headers: { etag: '"fake"'},
+            body: Readable.from([]),
+          } };
+        }
+        if (method === "GET") {
+          const row = objects.get(request.path);
+          if (!row) return { response: {
+            statusCode: 404,
+            headers: { "content-type": "application/xml" },
+            body: Readable.from([
+              "<Error><Code>NoSuchKey</Code><Message>Not found</Message></Error>",
+            ]),
+          } };
+          return { response: {
+            statusCode: 200,
+            headers: {
+              "content-length": String(row.body.length),
+              "content-type": "application/octet-stream",
+              ...row.metadata,
+            },
+            body: Readable.from([row.body]),
+          } };
+        }
+        throw new Error("forbidden_sdk_operation_" + method);
+      },
+      updateHttpClientConfig() {},
+      httpHandlerConfigs() { return {}; },
+    };
+    const client = createP2KodoS3Client({
+      accessKeyId: "fixture-access-key",
+      secretAccessKey: "fixture-secret-access-key-0123456789",
+      requestTimeoutMs: 5_000,
+      requestHandler,
+    });
+    let world;
+    try {
+      world = await makeWorld({ s3Client: client });
+      const token = signedToken();
+      await initialize(world.base, token);
+      const { handle, form } = await prepareProposal(
+        world, token, "fixed fake model to real SDK wire",
+      );
+      const confirmed = await confirm(world.base, {
+        cookie: sessionCookie(PRINCIPAL), ...form,
+      });
+      assert.equal(confirmed.status, 303, await confirmed.text());
+      assert.equal(storedRow(world.fixture.db, handle).state, "completed");
+      const forbiddenOther = await audio(world.base, {
+        cookie: sessionCookie(OTHER_PRINCIPAL),
+      });
+      assert.equal(forbiddenOther.status, 503);
+      const owner = await audio(world.base, {
+        cookie: sessionCookie(PRINCIPAL),
+      });
+      assert.equal(owner.status, 200);
+      assert.equal(owner.headers.get("content-type"), "audio/wav");
+      assert.deepEqual(Buffer.from(await owner.arrayBuffer()), FIXTURE);
+      assert.equal(world.providerCalls.length, 1);
+      assert.equal(objects.size, 1);
+      assert.equal(requests.filter(r => r.method === "PUT").length, 1);
+      assert.equal(requests.filter(r => r.method === "GET").length, 2);
+      assert.equal(requests.every(r => ["PUT","GET"].includes(r.method)), true);
+      assert.equal(requests[0].headers["x-amz-meta-owner-tag"] != null, true);
+      assert.equal(requests[0].headers["x-amz-meta-record-id"] != null, true);
+      assert.equal(requests[0].headers["x-amz-meta-expires-at"] != null, true);
+      const replay = await confirm(world.base, {
+        cookie: sessionCookie(PRINCIPAL), ...form,
+      });
+      assert.equal(replay.status, 303);
+      assert.equal(world.providerCalls.length, 1);
+      assert.equal(requests.filter(r => r.method === "PUT").length, 1);
+    } finally {
+      if (world) {
+        await world.close();
+        world.fixture.db.close();
+      }
+      client.destroy();
     }
   });
 
