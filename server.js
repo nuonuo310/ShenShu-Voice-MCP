@@ -12,6 +12,7 @@ import { checkText } from "./src/contract.js";
 import { makeInlineToneFixture } from "./src/inline-fixture.js";
 import { handleProtectedResourceShell } from "./src/protected-resource-shell.js";
 import { handlePrivateWebPlayer } from "./src/private-web-player.js";
+import { createV1KodoRenderOneShotProbe } from "./src/v1-kodo-render-one-shot-probe.js";
 import { PRIVATE_PLAYER_PENDING_PATH } from "./src/v1-p2-readonly-player-pending.js";
 import { createD1AdmissionDryRun } from "./src/d1-admission-dry-run.js";
 import { resolveProtectedResourceIdentity } from "./src/protected-resource-identity.js";
@@ -186,6 +187,7 @@ export function createShenShuHttpServer({
   fetchImpl = globalThis.fetch,
   nonbillableClosure = null,
   paidConfirmation = null,
+  kodoProbe = null,
   protectedResourceJwksCache = undefined,
   protectedResourceIdentityVerifier = null,
 } = {}) {
@@ -201,6 +203,10 @@ export function createShenShuHttpServer({
        typeof paidConfirmation.handleRequest !== "function" ||
        paidConfirmation.paidConfirmMounted !== true)) {
     throw new Error("paid_confirmation_invalid");
+  }
+  if (kodoProbe !== null &&
+      (!kodoProbe || typeof kodoProbe.handleRequest !== "function")) {
+    throw new Error("kodo_probe_invalid");
   }
   // Trusted server-side injection only. The MCP/player bridge also requires an
   // explicit staging flag, the exact staging resource identity and the existing
@@ -223,6 +229,10 @@ export function createShenShuHttpServer({
     return;
   }
   const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+
+  // Separate zero-provider, durable-one-shot probe. Dormant by default and
+  // never reachable through paid routes or source/caller-controlled flags.
+  if (kodoProbe && await kodoProbe.handleRequest(req, res, url)) return;
 
   // The fully gated candidate is mounted before both the read-only pending
   // handler and the fixed P1 player. That ordering is deliberate: when paid
@@ -358,9 +368,18 @@ export async function createShenShuRuntimeServer({
       ? "paid_runtime_unavailable"
       : assessed;
   }
+  const kodoProbe = createV1KodoRenderOneShotProbe({
+    env,
+    currentSha,
+    d1Client,
+    s3Client,
+    createD1Client: createComposedD1Client,
+    ...(clock === undefined ? {} : { clock }),
+  });
   const server = createShenShuHttpServer({
     env,
     fetchImpl,
+    kodoProbe,
     nonbillableClosure: composed.nonbillableClosure,
     paidConfirmation: paidCandidate,
     protectedResourceJwksCache: composed.jwksCache,
@@ -373,6 +392,7 @@ export async function createShenShuRuntimeServer({
     staticTestJwks: composed.staticTestJwks === true,
     paidConfirmMounted: paidCandidate !== null,
     paidStartupCode,
+    kodoProbeMounted: kodoProbe !== null,
   });
 }
 
