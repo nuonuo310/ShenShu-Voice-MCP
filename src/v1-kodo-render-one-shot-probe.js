@@ -222,6 +222,7 @@ export function createV1KodoRenderOneShotProbe({
       const approval = await boundedForm(req);
       const secret = env.SHENSHU_KODO_RENDER_PROBE_APPROVAL_TOKEN;
       if (!TOKEN.test(approval ?? "") ||
+          Buffer.byteLength(approval, "utf8") !== Buffer.byteLength(secret, "utf8") ||
           !timingSafeEqual(Buffer.from(approval), Buffer.from(secret))) {
         reply(res, 403, "approval_forbidden"); return true;
       }
