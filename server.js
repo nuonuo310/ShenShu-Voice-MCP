@@ -409,6 +409,7 @@ if (process.env.NODE_ENV !== "test") {
     staticTestJwks: false,
     paidConfirmMounted: false,
     paidStartupCode: "startup_exception",
+    kodoProbeMounted: false,
   }));
   runtime.server.listen(port, () => {
     console.log(`ShenShu Voice MCP P1-MOCK listening on http://localhost:${port}${MCP_PATH}`);
@@ -429,7 +430,8 @@ if (process.env.NODE_ENV !== "test") {
       static_test_jwks: runtime.staticTestJwks,
       paid_confirm_mounted: runtime.paidConfirmMounted === true,
       paid_startup_code: runtime.paidStartupCode,
-      paid_voice_enabled: runtime.paidConfirmMounted === true
+      paid_voice_enabled: runtime.paidConfirmMounted === true,
+      kodo_probe_mounted: runtime.kodoProbeMounted === true
     }));
   });
 }
