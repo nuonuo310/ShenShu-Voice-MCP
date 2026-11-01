@@ -33,6 +33,7 @@ import {
   V1_OFFLINE_MAX_DAILY_CALLS,
 } from "./v1-offline-paid-pipeline.js";
 import { STAGING_RESOURCE_ORIGIN } from "./protected-resource-identity.js";
+import { V1_P2_STAGE, createV1P2StageEmitter } from "./v1-p2-stage-diagnostics.js";
 import {
   DIGEST_PATTERN,
   HANDLE_PATTERN,
@@ -166,6 +167,8 @@ export function createV1P2StableOperationBroker(options = {}) {
     makeHandle = defaultHandle,
     makeOperationId = defaultOperationId,
     operationTtlMs = P2_OPERATION_DEFAULT_TTL_MS,
+    // Trusted offline-only hook. server.js never supplies it.
+    onStageDiagnostic = null,
   } = options;
 
   if (!validDependencies({
@@ -186,6 +189,7 @@ export function createV1P2StableOperationBroker(options = {}) {
   }
 
   const fixedVoiceId = voiceId.trim();
+  const emitStage = createV1P2StageEmitter(onStageDiagnostic);
 
   async function verifiedPrincipal(trustedRequest) {
     let identity;
@@ -379,6 +383,7 @@ export function createV1P2StableOperationBroker(options = {}) {
       }
 
       const operationId = claim.operationId;
+      emitStage(V1_P2_STAGE.D1_CLAIMED);
       try {
         const marked = await operationStore.markProviderPending({
           principal,
@@ -387,7 +392,9 @@ export function createV1P2StableOperationBroker(options = {}) {
           now: nowMs(clock),
         });
         if (marked?.updated !== true) throw new Error("operation_state_invalid");
+        emitStage(V1_P2_STAGE.D1_PENDING_READY);
       } catch {
+        emitStage(V1_P2_STAGE.D1_PENDING_FAILED);
         await closeAsUnknown({ principal, handle: input.handle, operationId });
         throw new Error("operation_outcome_unknown");
       }
@@ -417,7 +424,17 @@ export function createV1P2StableOperationBroker(options = {}) {
               return admission;
             }
             : undefined,
-          synthesize,
+          synthesize: async args => {
+            emitStage(V1_P2_STAGE.PROVIDER_ATTEMPT);
+            try {
+              const result = await synthesize(args);
+              emitStage(V1_P2_STAGE.PROVIDER_RETURNED);
+              return result;
+            } catch (error) {
+              emitStage(V1_P2_STAGE.PROVIDER_FAILED);
+              throw error;
+            }
+          },
           voiceId: fixedVoiceId,
           maximumDailyCalls,
           clock,
@@ -428,23 +445,32 @@ export function createV1P2StableOperationBroker(options = {}) {
           text: safeText,
         });
         requireSameCanonicalPrincipal(principal, observedPrincipal);
+        emitStage(V1_P2_STAGE.PIPELINE_READY);
       } catch {
+        emitStage(V1_P2_STAGE.PIPELINE_FAILED);
         await closeAsUnknown({ principal, handle: input.handle, operationId });
         throw new Error("operation_outcome_unknown");
       }
 
       const audio = validAudioResult(pipelineResult);
       if (!audio) {
+        emitStage(V1_P2_STAGE.AUDIO_FAILED);
         await closeAsUnknown({ principal, handle: input.handle, operationId });
         throw new Error("operation_outcome_unknown");
       }
 
+      emitStage(V1_P2_STAGE.AUDIO_READY);
+      let completionStarted = false;
       try {
+        emitStage(V1_P2_STAGE.PRIVATE_SAVE_STARTED);
         const saved = await privateResultStore.save({ principal, audio });
         if (!Number.isFinite(saved?.durationSeconds) ||
             typeof saved?.expiresAt !== "string") {
           throw new Error("result_store_invalid");
         }
+        emitStage(V1_P2_STAGE.PRIVATE_SAVE_READY);
+        completionStarted = true;
+        emitStage(V1_P2_STAGE.D1_COMPLETION_STARTED);
         const completed = await operationStore.markCompleted({
           principal,
           handle: input.handle,
@@ -452,7 +478,11 @@ export function createV1P2StableOperationBroker(options = {}) {
           now: nowMs(clock),
         });
         if (completed?.updated !== true) throw new Error("operation_state_invalid");
+        emitStage(V1_P2_STAGE.D1_COMPLETION_READY);
       } catch {
+        emitStage(completionStarted
+          ? V1_P2_STAGE.D1_COMPLETION_FAILED
+          : V1_P2_STAGE.PRIVATE_SAVE_FAILED);
         await closeAsUnknown({ principal, handle: input.handle, operationId });
         throw new Error("operation_outcome_unknown");
       }
