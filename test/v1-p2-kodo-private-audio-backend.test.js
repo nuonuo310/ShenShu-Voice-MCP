@@ -579,6 +579,37 @@ test("missing credentials, PUT ambiguity, timeout and GET failures fail closed",
     assert.equal(lifecycle.physicalRemoval, "bucket_lifecycle_only");
   });
 
+test("missing object is null, but missing bucket and generic 404 are Kodo GET failures",
+  async () => {
+    resetClock();
+    const fake = new FakeS3();
+    const backend = makeBackend(fake);
+    const now = new Date(currentMs).toISOString();
+    assert.equal(await backend.getLatest({ principal: PRINCIPAL, now }), null);
+    assert.equal(fake.calls.filter(c => c.name === "GetObjectCommand").length, 1);
+    for (const error of [
+      Object.assign(new Error("missing bucket"), {
+        name: "NoSuchBucket",
+        $metadata: { httpStatusCode: 404 },
+      }),
+      Object.assign(new Error("ambiguous generic 404"), {
+        name: "UnknownRemoteFailure",
+        $metadata: { httpStatusCode: 404 },
+      }),
+      Object.assign(new Error("access forbidden"), {
+        name: "AccessDenied",
+        $metadata: { httpStatusCode: 403 },
+      }),
+    ]) {
+      fake.failOn("GetObjectCommand", { error });
+      await assert.rejects(() => backend.getLatest({
+        principal: PRINCIPAL, now,
+      }), /kodo_get_failed/);
+    }
+    assert.equal(fake.calls.filter(c => c.name === "GetObjectCommand").length, 4);
+    assert.equal(fake.calls.some(c => /Delete|Head|List/i.test(c.name)), false);
+  });
+
 test("repeated reads perform exactly one object GET each and no hidden retry",
   async () => {
     resetClock();
