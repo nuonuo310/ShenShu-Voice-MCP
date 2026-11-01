@@ -36,6 +36,30 @@ If an operator later opens authenticated owner dashboards (not public PR), the n
 - **MiniMax only, read-only**: if the owner can obtain a single-operation provider trace/usage receipt for the matching time and billable count, compare on the owner's side. Hourly aggregate SUCCESS alone is not unique attribution. Do not export key, raw audio or billing identifiers into PR.
 - **App code only, offline**: test the actual MiniMax-supported WAV container variants and SDK S3 request shape with synthetic bytes; if adding future observability, record **fixed stage enums only** (no text, handle, account, token, principal, file path or raw response), and prove it cannot expose secrets or change the one-shot admission path. Do not use a new paid smoke merely to see what failed.
 
+### 3.1 One read-only D1 aggregate for the original UNKNOWN operation
+
+For an authorized owner using **Cloudflare D1 dashboard → the already-qualified dedicated D1 database** (UUID `234913cd-8901-4607-8147-31c4a4317111`), choose **Console**, NOT any historical/forbidden D1 database. The original confirmation was in local 2026-10-30 06:00–07:00 (UTC+8), corresponding to 2026-10-29 22:00–23:00 UTC. Run **only** this single `SELECT`; it returns aggregates, not principal/handle/record IDs or sealed text:
+
+```sql
+SELECT
+  COUNT(*) AS unknown_operations,
+  COALESCE(SUM(CASE WHEN r.request_id IS NOT NULL THEN 1 ELSE 0 END), 0)
+    AS matching_reservations,
+  COALESCE(SUM(CASE WHEN g.state = 'consumed' THEN 1 ELSE 0 END), 0)
+    AS consumed_grants
+FROM paid_voice_confirmation_operations AS o
+LEFT JOIN paid_voice_reservations AS r
+  ON r.request_id = o.request_id AND r.principal = o.principal
+LEFT JOIN paid_voice_grants AS g
+  ON g.grant_id = o.grant_id
+  AND g.request_id = o.request_id AND g.principal = o.principal
+WHERE o.state = 'unknown'
+  AND o.issued_at >= CAST(strftime('%s', '2026-10-29 22:00:00') AS INTEGER) * 1000
+  AND o.issued_at < CAST(strftime('%s', '2026-10-29 23:00:00') AS INTEGER) * 1000;
+```
+
+Interpretation: `unknown_operations = 1` together with `matching_reservations = 1` and `consumed_grants = 1` corroborates *an admitted and consumed* operation, NOT provider audio quality, Kodo write, D1 completed state, or a unique provider charge. `0` means only that no matching UNKNOWN row was found in this exact database and UTC hour, and requires identity/time recheck without guessing another database. `>1` means aggregate ambiguity; STOP without enumerating all owners. No `UPDATE`, `DELETE`, `DROP`, migrations, token rotation, retry or quota reset. Share only the three counts as receipt. If the selected D1 database UUID is uncertain, do not execute.
+
 ## 4. GO / NO-GO
 
 - **NO-GO now**: four paid flags remain OFF; no provider request, confirm POST, automated retry, D1/Kodo synthetic rerun, one-time lock deletion, manual quota reset, production/Call change, or PR merge.
