@@ -1071,7 +1071,7 @@ test("successful synthetic provider and private PUT still end unknown on D1 comp
     let completionAttempts = 0;
     const d1Client = {
       async query(sql, params = []) {
-        if (/UPDATE\\s+paid_voice_confirmation_operations\\s+SET state = 'completed'/.test(sql)) {
+        if (/UPDATE\s+paid_voice_confirmation_operations\s+SET state = 'completed'/.test(sql)) {
           completionAttempts++;
           throw new Error("offline_completion_write_failure");
         }
