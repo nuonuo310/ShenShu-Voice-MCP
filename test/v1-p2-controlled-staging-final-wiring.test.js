@@ -1383,7 +1383,7 @@ test("deployable server keeps confirm closed and P1 public surfaces intact",
       CONTROLLED_STAGING_PAID_CONFIRM_FLAG,
       CONTROLLED_STAGING_REAL_PROVIDER_FLAG,
       CONTROLLED_STAGING_PRIVATE_AUDIO_FLAG,
-    ]) delete offEnv[key];
+    ]) offEnv[key] = "0";
     const runtime = await createShenShuRuntimeServer({
       env: offEnv,
       d1Client: fixture.client,
@@ -1396,6 +1396,15 @@ test("deployable server keeps confirm closed and P1 public surfaces intact",
     assert.equal(runtime.sealedProposalEnabled, true);
     const base = await listen(runtime.server);
     try {
+      const html = await fetch(base + "/player");
+      assert.equal(html.status, 200);
+      const page = await html.text();
+      assert.match(page, /沈述 · 私有语音播放/);
+      assert.match(page, /固定非计费 WAV/);
+      assert.match(page, /\/player\/audio/);
+      const withoutSession = await fetch(base + "/player/audio");
+      assert.equal(withoutSession.status, 401);
+      assert.deepEqual(await withoutSession.json(), { error: "login_required" });
       for (const method of ["GET", "POST"]) {
         const response = await fetch(base + "/player/confirm", {
           method,
@@ -1453,6 +1462,20 @@ test("deployable server keeps confirm closed and P1 public surfaces intact",
       const fixed = Buffer.from(await p1.arrayBuffer());
       assert.equal(fixed.toString("ascii", 0, 4), "RIFF");
       assert.equal(fixed.toString("ascii", 8, 12), "WAVE");
+      const expectedTone = Buffer.from(
+        makeInlineToneFixture().audioBase64, "base64",
+      );
+      assert.deepEqual(fixed, expectedTone);
+      assert.match(p1.headers.get("cache-control"), /private.*no-store/);
+      assert.equal(p1.headers.get("access-control-allow-origin"), null);
+      const head = await fetch(base + "/player/audio", {
+        method: "HEAD",
+        headers: { cookie: realSessionCookie(PRINCIPAL) },
+      });
+      assert.equal(head.status, 200);
+      assert.equal(head.headers.get("content-type"), "audio/wav");
+      assert.equal(head.headers.get("content-length"), String(fixed.length));
+      assert.equal((await head.arrayBuffer()).byteLength, 0);
     } finally {
       runtime.server.closeAllConnections?.();
       await new Promise(resolve => runtime.server.close(resolve));
