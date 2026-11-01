@@ -206,7 +206,7 @@ test("one owner POST makes one D1 claim, one encrypted PUT, one GET and then rep
   const world=await serverFor();
   try {
     const result=await hit(world,{method:"POST"});
-    assert.equal(result.status,200,await result.text().catch(()=>"<response consumed>"));
+    assert.equal(result.status,200);
     // The response is JSON only and never contains token, private owner or WAV.
     const status=await result.json();
     assert.deepEqual(status,{code:"private_roundtrip_verified"});
