@@ -124,6 +124,7 @@ async function hit(world,{method="GET",authenticated=true,origin=ORIGIN,secret=A
   return fetch(world.base+KODO_RENDER_PROBE_PATH,{
     method,headers,body:method==="POST"?
       new URLSearchParams({approval:secret}).toString():undefined,
+    signal:AbortSignal.timeout(4000),
   });
 }
 test("probe stays invisible unless every independent paid-OFF, SHA, mode and token gate passes",async()=>{
