@@ -284,6 +284,27 @@ function makeProvider({ calls, mode = "ok" } = {}) {
     if (mode === "bad_json") {
       return new Response("not-json", { status: 200 });
     }
+    if (mode === "piped_wav") {
+      // Model an FFmpeg WAV emitted to a non-seekable pipe: legitimate
+      // 16 kHz PCM16 data but both length fields hold 0xffffffff.
+      // A LIST/INFO chunk before data is legal RIFF metadata.
+      const piped = Buffer.alloc(FIXTURE.length + 12);
+      FIXTURE.copy(piped, 0, 0, 36);
+      piped.write("LIST", 36);
+      piped.writeUInt32LE(4, 40);
+      piped.write("INFO", 44);
+      FIXTURE.copy(piped, 48, 36);
+      piped.writeUInt32LE(0xffffffff, 4);
+      piped.writeUInt32LE(0xffffffff, 52);
+      return new Response(JSON.stringify({
+        base_resp: { status_code: 0, status_msg: "success" },
+        data: { status: 2, audio: piped.toString("hex") },
+        extra_info: { audio_format: "wav", audio_sample_rate: 16000, audio_channel: 1 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
     if (mode === "bad_wav") {
       return new Response(JSON.stringify({
         base_resp: { status_code: 0 },
@@ -737,6 +758,57 @@ test("normal server completes one synthetic paid-to-private journey",
         await world.close();
         world.fixture.db.close();
       }
+    }
+  });
+
+test("FFmpeg-like nonseekable provider WAV reaches encrypted private owner player",
+  { skip: sqliteSkip }, async () => {
+    resetClock();
+    alignClockToRealTime();
+    const world = await makeWorld({ providerMode: "piped_wav" });
+    try {
+      const token = signedToken();
+      await initialize(world.base, token);
+      const { handle, form } = await prepareProposal(
+        world, token, "one offline nonseekable WAV delivery",
+      );
+      const result = await confirm(world.base, {
+        cookie: sessionCookie(PRINCIPAL),
+        ...form,
+      });
+      assert.equal(result.status, 303);
+      assert.equal(storedRow(world.fixture.db, handle).state, "completed");
+      assert.equal(world.providerCalls.length, 1);
+      assert.equal(
+        world.fake.calls.filter(call => call.name === "PutObjectCommand").length,
+        1,
+      );
+      assert.equal(world.fake.objects.size, 1);
+      const readback = await audio(world.base, {
+        cookie: sessionCookie(PRINCIPAL),
+      });
+      assert.equal(readback.status, 200);
+      assert.equal(readback.headers.get("content-type"), "audio/wav");
+      const wavResult = Buffer.from(await readback.arrayBuffer());
+      assert.equal(wavResult.length, FIXTURE.length + 12);
+      assert.equal(wavResult.readUInt32LE(4), wavResult.length - 8);
+      assert.equal(wavResult.toString("ascii", 48, 52), "data");
+      assert.equal(wavResult.readUInt32LE(52), FIXTURE.length - 44);
+      assert.deepEqual(wavResult.subarray(56), FIXTURE.subarray(44));
+      const again = await confirm(world.base, {
+        cookie: sessionCookie(PRINCIPAL),
+        ...form,
+      });
+      assert.equal(again.status, 303);
+      assert.equal(world.providerCalls.length, 1);
+      assert.equal(
+        world.fake.calls.filter(call => call.name === "PutObjectCommand").length,
+        1,
+      );
+      assertNoForbiddenS3(world.fake);
+    } finally {
+      await world.close();
+      world.fixture.db.close();
     }
   });
 
