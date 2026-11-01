@@ -1400,7 +1400,10 @@ test("deployable server keeps confirm closed and P1 public surfaces intact",
       assert.equal(html.status, 200);
       const page = await html.text();
       assert.match(page, /沈述 · 私有语音播放/);
-      assert.match(page, /固定非计费 WAV/);
+      assert.match(page, /当前登录会话有权访问的 WAV/);
+      assert.match(page, /不会发起 MiniMax 合成或产生新的试听请求/);
+      assert.match(page, /正在播放已授权音频/);
+      assert.doesNotMatch(page, /正在播放固定测试音频/);
       assert.match(page, /\/player\/audio/);
       const withoutSession = await fetch(base + "/player/audio");
       assert.equal(withoutSession.status, 401);
