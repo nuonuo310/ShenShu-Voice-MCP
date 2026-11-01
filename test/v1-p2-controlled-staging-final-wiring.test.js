@@ -1063,6 +1063,75 @@ test("Kodo PUT and GET failures fail closed without DELETE, HEAD or LIST",
     }
   });
 
+test("successful synthetic provider and private PUT still end unknown on D1 completion failure",
+  { skip: sqliteSkip }, async () => {
+    resetClock();
+    alignClockToRealTime();
+    const fixture = await makeFixture();
+    let completionAttempts = 0;
+    const d1Client = {
+      async query(sql, params = []) {
+        if (/UPDATE\\s+paid_voice_confirmation_operations\\s+SET state = 'completed'/.test(sql)) {
+          completionAttempts++;
+          throw new Error("offline_completion_write_failure");
+        }
+        return fixture.client.query(sql, params);
+      },
+    };
+    const world = await makeWorld({ fixture, d1Client });
+    try {
+      const token = signedToken();
+      await initialize(world.base, token);
+      const { handle, form } = await prepareProposal(
+        world, token, "completion write failure after successful private PUT",
+      );
+      const first = await confirm(world.base, {
+        cookie: sessionCookie(PRINCIPAL),
+        ...form,
+      });
+      assert.equal(first.status, 409);
+      assert.deepEqual(await first.json(), {
+        error: "provider_outcome_unknown",
+      });
+      assert.equal(completionAttempts, 1);
+      assert.equal(world.providerCalls.length, 1);
+      assert.equal(
+        world.fake.calls.filter(call => call.name === "PutObjectCommand").length,
+        1,
+      );
+      assert.equal(world.fake.objects.size, 1);
+      assert.equal(storedRow(world.fixture.db, handle).state, "unknown");
+      assert.deepEqual(rowCounts(world.fixture.db), {
+        operations: 1,
+        reservations: 1,
+        grants: 1,
+      });
+      assert.equal(
+        world.fixture.db.prepare("SELECT state FROM paid_voice_grants").get().state,
+        "consumed",
+      );
+
+      // Replay cannot create a second paid provider call or overwrite ciphertext.
+      const replay = await confirm(world.base, {
+        cookie: sessionCookie(PRINCIPAL),
+        ...form,
+      });
+      assert.equal(replay.status, 409);
+      assert.deepEqual(await replay.json(), {
+        error: "provider_outcome_unknown",
+      });
+      assert.equal(world.providerCalls.length, 1);
+      assert.equal(
+        world.fake.calls.filter(call => call.name === "PutObjectCommand").length,
+        1,
+      );
+      assertNoForbiddenS3(world.fake);
+    } finally {
+      await world.close();
+      world.fixture.db.close();
+    }
+  });
+
 test("stale CSRF and expired proposal fail before any provider attempt",
   { skip: sqliteSkip }, async () => {
     resetClock();
