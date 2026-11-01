@@ -79,7 +79,11 @@ function allowedConfig(env, currentSha) {
   }
   const expected = env?.SHENSHU_KODO_RENDER_PROBE_APPROVED_SHA;
   const live = env?.NODE_ENV === "test" ? currentSha : env?.RENDER_GIT_COMMIT;
-  return SHA.test(expected ?? "") && expected === live &&
+  const start = Date.parse(env?.SHENSHU_KODO_RENDER_PROBE_START_AT ?? "");
+  const end = Date.parse(env?.SHENSHU_KODO_RENDER_PROBE_END_AT ?? "");
+  const validWindow = Number.isSafeInteger(start) && Number.isSafeInteger(end) &&
+    end > start && end - start <= 15 * 60 * 1000;
+  return validWindow && SHA.test(expected ?? "") && expected === live &&
     (env?.NODE_ENV === "test" || currentSha === undefined) &&
     TOKEN.test(env?.SHENSHU_KODO_RENDER_PROBE_APPROVAL_TOKEN ?? "") &&
     typeof env?.SHENSHU_PLAYER_SESSION_SECRET === "string" &&
@@ -87,10 +91,13 @@ function allowedConfig(env, currentSha) {
 }
 
 function decodeMasterKey(value) {
-  if (typeof value !== "string" || !/^[A-Za-z0-9+/]{43}=$/.test(value)) return null;
-  const key = Buffer.from(value, "base64");
+  if (typeof value !== "string") return null;
+  const urlsafe = /^[A-Za-z0-9_-]{43}$/.test(value);
+  const standard = /^[A-Za-z0-9+/]{43}=$/.test(value);
+  if (!urlsafe && !standard) return null;
+  const key = Buffer.from(value, urlsafe ? "base64url" : "base64");
   if (key.length !== 32 || key.every(byte => byte === 0) ||
-      key.toString("base64") !== value) return null;
+      key.toString(urlsafe ? "base64url" : "base64") !== value) return null;
   return key;
 }
 
@@ -193,6 +200,13 @@ export function createV1KodoRenderOneShotProbe({
   return Object.freeze({
     async handleRequest(req, res, url) {
       if (url?.pathname !== KODO_RENDER_PROBE_PATH) return false;
+      const moment = clock();
+      const start = Date.parse(env.SHENSHU_KODO_RENDER_PROBE_START_AT);
+      const end = Date.parse(env.SHENSHU_KODO_RENDER_PROBE_END_AT);
+      if (!(moment instanceof Date) || !Number.isFinite(moment.valueOf()) ||
+          moment.valueOf() < start || moment.valueOf() >= end) {
+        reply(res, 410, "probe_window_closed"); return true;
+      }
       const session = readPrivatePlayerSession(req, {
         sessionSecret: env.SHENSHU_PLAYER_SESSION_SECRET,
         clock: () => clock().valueOf(),
