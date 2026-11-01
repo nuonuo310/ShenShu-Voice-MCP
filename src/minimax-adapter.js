@@ -1,4 +1,4 @@
-import { checkText, validateWav } from "./contract.js";
+import { checkText, MAX_WAV_BYTES, validateWav } from "./contract.js";
 
 export const MINIMAX_ENDPOINT = "https://api.minimaxi.com/v1/t2a_v2";
 export const DEFAULT_MODEL_ID = "speech-2.8-hd";
@@ -9,11 +9,54 @@ function configured(value) {
 }
 
 function hexToBuffer(value) {
-  if (typeof value !== "string" || value.length === 0 || value.length % 2 !== 0) {
+  if (typeof value !== "string" || value.length === 0 ||
+      value.length > MAX_WAV_BYTES * 2 || value.length % 2 !== 0) {
     throw new Error("invalid_upstream");
   }
   if (!/^[0-9a-fA-F]+$/.test(value)) throw new Error("invalid_upstream");
   return Buffer.from(value, "hex");
+}
+
+/**
+ * Repair only a non-seekable PCM WAV with BOTH 0xffffffff RIFF and data sizes.
+ * FFmpeg's WAV muxer uses these placeholders when its destination is a pipe.
+ * No re-encoding, guessing an unrelated size field, or relaxing validateWav.
+ * This is a prospective compatibility fix, NOT attribution for a paid incident.
+ */
+function canonicalizeNonseekableWav(audio) {
+  if (!Buffer.isBuffer(audio) || audio.length < 44 ||
+      audio.length > MAX_WAV_BYTES ||
+      audio.toString("ascii", 0, 4) !== "RIFF" ||
+      audio.toString("ascii", 8, 12) !== "WAVE" ||
+      audio.readUInt32LE(4) !== 0xffffffff) return audio;
+
+  let position = 12;
+  let foundFmt = false;
+  while (position + 8 <= audio.length) {
+    const kind = audio.toString("ascii", position, position + 4);
+    const size = audio.readUInt32LE(position + 4);
+    const dataStart = position + 8;
+    if (kind === "fmt ") {
+      if (foundFmt || size < 16 || dataStart + size > audio.length) return audio;
+      foundFmt = true;
+    }
+    if (kind === "data") {
+      // Only an EOF-terminated data payload is unambiguous. The copied WAV
+      // is still subjected to the exact existing 16 kHz mono PCM16 contract.
+      if (!foundFmt || size !== 0xffffffff) return audio;
+      const actualDataBytes = audio.length - dataStart;
+      if (actualDataBytes < 6400 || actualDataBytes % 2 !== 0) return audio;
+      const canonical = Buffer.from(audio);
+      canonical.writeUInt32LE(canonical.length - 8, 4);
+      canonical.writeUInt32LE(actualDataBytes, position + 4);
+      return canonical;
+    }
+    if (size === 0xffffffff) return audio;
+    const next = dataStart + size + (size % 2);
+    if (next > audio.length) return audio;
+    position = next;
+  }
+  return audio;
 }
 
 export function buildMiniMaxRequest({ text, voiceId, modelId = DEFAULT_MODEL_ID }) {
@@ -73,7 +116,7 @@ export async function synthesizeMiniMax({
       throw new Error("upstream_error");
     }
     if (payload?.base_resp?.status_code !== 0) throw new Error("upstream_error");
-    const audio = hexToBuffer(payload?.data?.audio);
+    const audio = canonicalizeNonseekableWav(hexToBuffer(payload?.data?.audio));
     const metadata = validateWav(audio);
     return Object.freeze({ audio, ...metadata });
   } catch (error) {
