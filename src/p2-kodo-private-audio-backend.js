@@ -349,10 +349,11 @@ function parseEnvelope(buffer, principal, keys) {
 }
 
 function isNotFound(error) {
+  // A missing *bucket* is a configuration/permission problem, never an
+  // acceptable owner-audio miss. Do not collapse an arbitrary HTTP 404 into
+  // a missing object: preserve fail-closed Kodo GET errors instead.
   return error?.name === "NoSuchKey" ||
-    error?.name === "NotFound" ||
-    error?.name === "NoSuchBucket" ||
-    error?.$metadata?.httpStatusCode === 404;
+    error?.name === "NotFound";
 }
 
 async function readBoundedBody(body) {
