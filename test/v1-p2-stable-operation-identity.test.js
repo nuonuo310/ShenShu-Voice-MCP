@@ -667,7 +667,7 @@ test("offline diagnostic codes distinguish failed provider, private PUT, and D1 
       trustedRequest: trustedRequest(), handle: pending.handle,
     }), { status: "unknown", retryable: false });
     await assert.rejects(h.broker.confirm(confirmInput), /operation_outcome_unknown/);
-    assert.equal(h.providerArgs.length, item.name === "provider" ? 1 : 1);
+    assert.equal(h.providerArgs.length, 1);
     assert.deepEqual(h.paidStore.calls, ["reserve", "issue", "consume"]);
     assert.equal(events.at(-1), item.lastCode, item.name);
   }
