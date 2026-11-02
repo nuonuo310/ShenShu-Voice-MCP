@@ -1,6 +1,24 @@
 # Voice V1 — Render → Kodo 唯一一次非计费合成验证施工包
 
-**状态：IMPLEMENTED / OFFLINE CI PASS，REAL CLOUD PROBE NOT YET RUN。** 此包不授权新的 MiniMax 或语音额度操作。项目总控沈述；糯糯已批准一次七牛 1 PUT / 1 GET 的受限验证（2026-11-01）；**独立 D1 表结构创建需要额外确认**，不得将已有同意扩大为对任何 D1 Schema 的写入许可。
+**状态：REAL CLOUD PROBE 执行一次后 UNKNOWN；唯一 D1 锁已消耗，已安全关闭。下方原施工步骤仅保留历史，不得重跑。** 此包不授权新的 MiniMax 或语音额度操作。项目总控沈述；糯糯已批准一次七牛 1 PUT / 1 GET 的受限验证（2026-11-01）；**独立 D1 表结构创建需要额外确认**，不得将已有同意扩大为对任何 D1 Schema 的写入许可。
+
+## 2026-11-02 实际执行后的最终裁决（覆盖下方旧施工步骤）
+
+**REAL CLOUD: UNKNOWN / CLOSED / ONE-SHOT LOCK SPENT；严禁按下文旧步骤再次开启或重跑。**
+
+糯糯已在 Cloudflare 执行上述新增独立锁表 DDL，并在获批 Render staging 精确 SHA `3f27e0bd8e1860579ea8c98b779b3b9c23419db5` 启用一次性验证。本人确认按钮执行一次后返回 `{"code":"probe_outcome_unknown"}`。按当时唯一代码路径，此状态仅能在独立 D1 `INSERT ... RETURNING` 返回成功后出现；因此**固定锁 `shenshu_kodo_render_probe_once_20261101_v1` 必须按已消耗永久保留**。不能从缺少阶段日志推断真实七牛 PUT / GET 是否到达或成功，也不能重置锁再试。
+
+用户随后关闭验证入口。Render 独立回读确认最新安全部署 `dep-dbk8hkflk1mc73b655mg`（2026-11-02T12:58:26Z）仍运行 `3f27e0bd8e1860579ea8c98b779b3b9c23419db5`，其启动日志证明 `kodo_probe_mounted:false`、`paid_confirm_mounted:false`、`paid_voice_enabled:false`、`final_wiring_flag_off`。
+
+旧的下文“STOP 1–4”是**历史上已走过的单次操作流程，不再构成未来执行授权**。不删除 / 重建 / 转储已消耗锁，不对七牛执行新的 PUT / GET / HEAD / DELETE / LIST，不调用 MiniMax，不动旧付费授权。
+
+2026-11-02 离线后续修补：
+- `71a6b061a2adc4d47cbb07b29c3de47682ede6e2`：单次探针真实 AWS SDK v3 请求组装、SigV4、响应解码的**无联网**完整回归测试，CI `41449932544` SUCCESS。
+- `c2b1585aaa1cb5fcdb3e5e06b71a0ef9f85162b7`：修复先消耗 D1 锁、后才创建和校验 Kodo 客户端的顺序错误。先执行无网络的 SDK / bucket / 合成固定音频配置预检；预检失败返回 `probe_local_preflight_failed` 且**不占锁、不调用七牛**；一旦占锁，网络失败仍为不可重试 UNKNOWN。新增非法 bucket 和 SDK 构造失败的离线反例，CI `41451366145` SUCCESS。
+- 两项修补仍只在 Draft PR #146，**没有部署，不是旧 UNKNOWN 根因证明**。前端指纹浏览器无须更换；未知的是真实 Render 云端侧失败。
+- Voice V1 仍维持 **2/9**。只允许检查此前真实服务已有的非秘密请求回执 / 七牛官方工单；需另行审批对外披露的信息。绝不把已消耗的单次验证当作可再授权循环。
+
+---
 
 ## 目标和完成线
 
