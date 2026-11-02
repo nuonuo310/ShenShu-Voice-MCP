@@ -227,30 +227,11 @@ export function createV1KodoRenderOneShotProbe({
         reply(res, 403, "approval_forbidden"); return true;
       }
 
-      // Global permanent lock, shared by every process/deploy. NO refund or
-      // retry if a D1/PUT/GET response was lost or uncertain.
-      let client;
-      try {
-        client = d1Client ?? createD1Client({ env });
-        const now = clock();
-        if (!(now instanceof Date) || !Number.isFinite(now.valueOf())) {
-          throw new Error("probe_clock_invalid");
-        }
-        const claimed = await client.query(CLAIM_ONCE, [
-          KODO_RENDER_PROBE_LOCK_ID, now.valueOf(),
-        ]);
-        if (!Array.isArray(claimed) || claimed.length !== 1 ||
-            claimed[0]?.probe_id !== KODO_RENDER_PROBE_LOCK_ID) {
-          reply(res, 409, "probe_already_spent_or_unavailable");
-          return true;
-        }
-      } catch {
-        reply(res, 503, "probe_lock_unavailable");
-        return true;
-      }
-
+      // Purely local readiness checks come BEFORE the irrevocable D1 claim.
+      // SDK construction, bucket validation and fixture validation perform no
+      // network I/O. An invalid configuration must not consume the only probe.
       const counters = { put: 0, get: 0 };
-      let kodo;
+      let kodo, backend, audio;
       try {
         kodo = s3Client ?? createS3Client({
           accessKeyId: env.SHENSHU_KODO_ACCESS_KEY_ID,
@@ -258,7 +239,7 @@ export function createV1KodoRenderOneShotProbe({
           sessionToken: env.SHENSHU_KODO_SESSION_TOKEN,
           requestTimeoutMs: 10000,
         });
-        const backend = createP2KodoPrivateAudioBackend({
+        backend = createP2KodoPrivateAudioBackend({
           s3Client: limitedClient(kodo, counters),
           bucket: env.SHENSHU_KODO_BUCKET,
           prefix: KODO_DEFAULT_PREFIX,
@@ -266,29 +247,62 @@ export function createV1KodoRenderOneShotProbe({
           clock,
           requestTimeoutMs: 10000,
         });
-        const audio = Buffer.from(makeInlineToneFixture().audioBase64, "base64");
-        const started = clock().valueOf();
-        const createdAt = new Date(started).toISOString();
-        const saved = await backend.putLatest({
-          principal: FIXED_OWNER,
-          recordId: "voice_" + "7".repeat(32),
-          audio,
-          mimeType: "audio/wav",
-          durationSeconds: 0.7,
-          createdAt,
-          expiresAt: new Date(started + PROBE_AUDIO_TTL_SECONDS * 1000).toISOString(),
-        });
-        if (saved?.stored !== true) throw new Error("probe_not_stored");
-        const read = await backend.getLatest({ principal: FIXED_OWNER, now: clock() });
-        if (!read?.audio || !Buffer.from(read.audio).equals(audio)) {
-          throw new Error("probe_readback_failed");
+        audio = Buffer.from(makeInlineToneFixture().audioBase64, "base64");
+        if (audio.byteLength > KODO_RENDER_PROBE_MAX_OBJECT_BYTES) {
+          throw new Error("probe_fixture_too_large");
         }
-        if (counters.put !== 1 || counters.get !== 1) {
-          throw new Error("probe_count_invalid");
-        }
-        reply(res, 200, "private_roundtrip_verified");
       } catch {
-        reply(res, 503, "probe_outcome_unknown");
+        kodo?.destroy?.();
+        reply(res, 503, "probe_local_preflight_failed");
+        return true;
+      }
+
+      // Global permanent lock, shared by every process/deploy. NO refund or
+      // retry if a D1/PUT/GET response was lost or uncertain.
+      try {
+        let client;
+        try {
+          client = d1Client ?? createD1Client({ env });
+          const now = clock();
+          if (!(now instanceof Date) || !Number.isFinite(now.valueOf())) {
+            throw new Error("probe_clock_invalid");
+          }
+          const claimed = await client.query(CLAIM_ONCE, [
+            KODO_RENDER_PROBE_LOCK_ID, now.valueOf(),
+          ]);
+          if (!Array.isArray(claimed) || claimed.length !== 1 ||
+              claimed[0]?.probe_id !== KODO_RENDER_PROBE_LOCK_ID) {
+            reply(res, 409, "probe_already_spent_or_unavailable");
+            return true;
+          }
+        } catch {
+          reply(res, 503, "probe_lock_unavailable");
+          return true;
+        }
+        try {
+          const started = clock().valueOf();
+          const createdAt = new Date(started).toISOString();
+          const saved = await backend.putLatest({
+            principal: FIXED_OWNER,
+            recordId: "voice_" + "7".repeat(32),
+            audio,
+            mimeType: "audio/wav",
+            durationSeconds: 0.7,
+            createdAt,
+            expiresAt: new Date(started + PROBE_AUDIO_TTL_SECONDS * 1000).toISOString(),
+          });
+          if (saved?.stored !== true) throw new Error("probe_not_stored");
+          const read = await backend.getLatest({ principal: FIXED_OWNER, now: clock() });
+          if (!read?.audio || !Buffer.from(read.audio).equals(audio)) {
+            throw new Error("probe_readback_failed");
+          }
+          if (counters.put !== 1 || counters.get !== 1) {
+            throw new Error("probe_count_invalid");
+          }
+          reply(res, 200, "private_roundtrip_verified");
+        } catch {
+          reply(res, 503, "probe_outcome_unknown");
+        }
       } finally {
         kodo?.destroy?.();
       }
