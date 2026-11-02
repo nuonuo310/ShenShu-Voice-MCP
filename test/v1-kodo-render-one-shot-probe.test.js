@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import { Readable } from "node:stream";
 import { makeInlineToneFixture } from "../src/inline-fixture.js";
+import { createP2KodoS3Client, KODO_S3_ENDPOINT } from "../src/p2-kodo-private-audio-backend.js";
 import { PRIVATE_PLAYER_SESSION_COOKIE } from "../src/private-web-player.js";
 import { STAGING_RESOURCE_ORIGIN } from "../src/protected-resource-identity.js";
 import {
@@ -252,6 +253,85 @@ test("Kodo PUT or GET error permanently consumes lock; no subsequent cloud reque
     }finally{await world.close();}
   }
 });
+test("one-shot probe completes owner-to-real-AWS-SDK-wire PUT/GET with S3 response deserialization",
+  async () => {
+    const requests = [];
+    const objects = new Map();
+    const handler = {
+      async handle(request) {
+        const method = request.method;
+        const headers = request.headers ?? {};
+        requests.push({method, path:request.path, hostname:request.hostname});
+        assert.equal(request.hostname, new URL(KODO_S3_ENDPOINT).hostname);
+        assert.match(headers.authorization, /^AWS4-HMAC-SHA256 /);
+        assert.match(headers.authorization, /\/ap-southeast-1\/s3\/aws4_request/);
+        assert.equal("x-amz-acl" in headers, false);
+        if (method === "PUT") {
+          let raw = request.body;
+          if (!(raw instanceof Uint8Array)) {
+            const parts = [];
+            for await (const chunk of raw) parts.push(Buffer.from(chunk));
+            raw = Buffer.concat(parts);
+          }
+          const body = Buffer.from(raw);
+          assert.ok(body.length > 22000 && body.length <= 32768);
+          assert.equal(headers["content-type"], "application/octet-stream");
+          assert.equal(headers["content-length"], String(body.length));
+          objects.set(request.path, {
+            body,
+            metadata: Object.fromEntries(Object.entries(headers).filter(([key]) =>
+              key.startsWith("x-amz-meta-"))),
+          });
+          return {response:{
+            statusCode:200,
+            headers:{etag:'"local-signed-wire-fixture"'},
+            body:Readable.from([]),
+          }};
+        }
+        if (method === "GET") {
+          const row = objects.get(request.path);
+          if (!row) throw new Error("offline_fixture_missing_object");
+          return {response:{
+            statusCode:200,
+            headers:{
+              "content-length":String(row.body.length),
+              "content-type":"application/octet-stream",
+              ...row.metadata,
+            },
+            body:Readable.from([row.body]),
+          }};
+        }
+        throw new Error("offline_probe_forbidden_method");
+      },
+      updateHttpClientConfig(){},
+      httpHandlerConfigs(){return {};},
+    };
+    const sdk = createP2KodoS3Client({
+      accessKeyId:"offline-wire-access-key",
+      secretAccessKey:"offline-wire-secret-key-0123456789",
+      requestHandler:handler,
+      requestTimeoutMs:10000,
+    });
+    const lock = new AtomicLock();
+    const world=await serverFor({lock,kodo:sdk});
+    try {
+      const first=await hit(world,{method:"POST"});
+      const result=await first.json();
+      assert.equal(first.status,200,JSON.stringify(result));
+      assert.deepEqual(result,{code:"private_roundtrip_verified"});
+      assert.equal(lock.claimed,true);
+      assert.equal(lock.calls.length,1);
+      assert.deepEqual(requests.map(x=>x.method),["PUT","GET"]);
+      assert.equal(requests[0].path,requests[1].path);
+      assert.equal(objects.size,1);
+      assert.equal((await hit(world,{method:"POST"})).status,409);
+      assert.equal(requests.length,2);
+    } finally {
+      await world.close();
+      sdk.destroy();
+    }
+  });
+
 test("expired 15-minute window rejects owner before D1 or Kodo",async()=>{
   const world=await serverFor({clock:()=>new Date(NOW+60*60*1000)});
   try{
