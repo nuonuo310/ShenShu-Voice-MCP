@@ -161,7 +161,8 @@ test("the standalone page has a strict CSP, no external assets and no automatic 
   assert.equal(response.status,200);
   assert.equal(response.headers["Content-Type"],"text/html; charset=utf-8");
   assert.match(response.headers["Content-Security-Policy"],/default-src 'none'/);
-  assert.match(response.headers["Content-Security-Policy"],/media-src 'self'/);
+  assert.match(response.headers["Content-Security-Policy"],/media-src 'self' blob:/);
+  assert.match(response.headers["Content-Security-Policy"],/connect-src 'self'/);
   assert.match(response.headers["Content-Security-Policy"],/frame-ancestors 'none'/);
   assert.equal(response.headers["X-Frame-Options"],"DENY");
   assert.match(response.text,/href="\/player\/login"/);
