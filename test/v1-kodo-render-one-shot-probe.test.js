@@ -96,9 +96,10 @@ class FakeKodo {
     throw Error("forbidden_fake_command_"+name);
   }
 }
-async function serverFor({config=env(),lock=new AtomicLock(),kodo=new FakeKodo(),clock=()=>new Date(NOW)}={}) {
+async function serverFor({config=env(),lock=new AtomicLock(),kodo=new FakeKodo(),clock=()=>new Date(NOW),createS3Client}={}) {
   const probe=createV1KodoRenderOneShotProbe({
     env:config,currentSha:SHA,d1Client:lock,s3Client:kodo,clock,
+    ...(createS3Client === undefined ? {} : {createS3Client}),
   });
   const server=createShenShuHttpServer({env:config,kodoProbe:probe});
   await new Promise((resolve,reject)=>{
@@ -204,6 +205,38 @@ test("owner login plus exact Origin and password required before the permanent D
     assert.equal(world.kodo.calls.length,0);
   } finally {await world.close();}
 });
+test("invalid Kodo bucket fails before durable claim or any storage call",async()=>{
+  const world=await serverFor({config:env({SHENSHU_KODO_BUCKET:"Invalid_Bucket"})});
+  try{
+    const response=await hit(world,{method:"POST"});
+    assert.equal(response.status,503);
+    assert.deepEqual(await response.json(),{code:"probe_local_preflight_failed"});
+    assert.equal(world.lock.claimed,false);
+    assert.equal(world.lock.calls.length,0);
+    assert.equal(world.kodo.calls.length,0);
+  }finally{await world.close();}
+});
+
+test("S3 client constructor rejection cannot consume the once lock",async()=>{
+  const lock=new AtomicLock();
+  let creations=0;
+  const world=await serverFor({
+    lock,kodo:null,
+    createS3Client:()=>{
+      creations++;
+      throw new Error("offline config invalid");
+    },
+  });
+  try{
+    const response=await hit(world,{method:"POST"});
+    assert.equal(response.status,503);
+    assert.deepEqual(await response.json(),{code:"probe_local_preflight_failed"});
+    assert.equal(creations,1);
+    assert.equal(lock.claimed,false);
+    assert.equal(lock.calls.length,0);
+  }finally{await world.close();}
+});
+
 test("one owner POST makes one D1 claim, one encrypted PUT, one GET and then replay locks",async()=>{
   const world=await serverFor();
   try {
