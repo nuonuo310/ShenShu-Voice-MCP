@@ -61,7 +61,7 @@ export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=nul
   } catch {return null;}
 }
 
-export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,privateFixtureEnabled=false,proposalTools=null}={}) {
+export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,privateFixtureEnabled=false,proposalTools=null,desktop04Tools=null}={}) {
   if(typeof verifiedSubject!=="string" || verifiedSubject.length<8) throw Error("missing_verified_subject");
   const server=new Server(
     {name:"shenshu-identity-stage",version:"0.2.0"},
@@ -148,6 +148,19 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
        proposalTools.tools.length!==2) throw Error("proposal_bridge_unavailable");
     tools.push(...proposalTools.tools);
   }
+  // Dormant, server-injected only; no mere environment flag can mount a paid tool.
+  if(desktop04Tools!==null){
+    if(!privateFixtureEnabled||!desktop04Tools||
+      !Array.isArray(desktop04Tools.tools)||desktop04Tools.tools.length!==2||
+      typeof desktop04Tools.call!=="function"||
+      desktop04Tools.tools[0]?.name!=="prepare_shenshu_desktop_04"||
+      desktop04Tools.tools[1]?.name!=="confirm_shenshu_desktop_04"||
+      desktop04Tools.tools[1]?._meta?.ui?.visibility?.length!==1||
+      desktop04Tools.tools[1]._meta.ui.visibility[0]!=="app") {
+      throw new Error("desktop04_tools_unavailable");
+    }
+    tools.push(...desktop04Tools.tools);
+  }
   server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[{
     uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE
   }]:[]}));
@@ -161,6 +174,9 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     const args=request.params.arguments;
     if(proposalTools && proposalTools.tools.some(tool=>tool.name===request.params.name)) {
       return proposalTools.call(request.params.name,args);
+    }
+    if(desktop04Tools && desktop04Tools.tools.some(tool=>tool.name===request.params.name)) {
+      return desktop04Tools.call(request.params.name,args);
     }
     if(args!==undefined && (
       args===null || typeof args!=="object" || Array.isArray(args) ||
@@ -220,7 +236,7 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
  */
 export async function handleStagingAuthenticatedMcp(req,res,{
   env,issuer,audience,resourceMetadataUrl,jwksCache=null,proposalBroker=null,
-  identityVerifier=null
+  identityVerifier=null,desktop04Factory=null
 }) {
   const challenge='Bearer resource_metadata="'+resourceMetadataUrl+'", scope="voice:speak"';
   const refuse=(status,reason, extra={})=>{
@@ -269,9 +285,28 @@ export async function handleStagingAuthenticatedMcp(req,res,{
       return;
     }
   }
+  // Do not build this in production unless the trusted server composition
+  // explicitly injects the factory AND staging's dedicated flag is on.
+  // Current runtime never injects it: default is always null.
+  let desktop04Tools=null;
+  if(desktop04Factory!==null &&
+     env.SHENSHU_DESKTOP_04_APP_ENABLED==="1" &&
+     env.SHENSHU_PRIVATE_FIXTURE_ENABLED==="1"){
+    if(typeof desktop04Factory!=="function"){
+      refuse(503,"desktop04_unavailable");return;
+    }
+    try {
+      desktop04Tools=desktop04Factory({
+        verifiedRequest:{headers:{authorization:req.headers.authorization}},
+        verifiedSubject:verifiedIdentity.subject
+      });
+    } catch {
+      refuse(503,"desktop04_unavailable");return;
+    }
+  }
   const server=makeStagingMcpServer({verifiedSubject:verifiedIdentity.subject,admissionDryRun,
     privateFixtureEnabled:env.SHENSHU_PRIVATE_FIXTURE_ENABLED==="1",
-    proposalTools});
+    proposalTools,desktop04Tools});
   const transport=new StreamableHTTPServerTransport({
     sessionIdGenerator:undefined,enableJsonResponse:true
   });
