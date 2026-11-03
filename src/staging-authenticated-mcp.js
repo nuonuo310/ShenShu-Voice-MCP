@@ -12,10 +12,13 @@ import { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { ListToolsRequestSchema, CallToolRequestSchema, ListResourcesRequestSchema, ReadResourceRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createVerifiedIdentityResolver } from "./verified-identity.js";
+import { createV1P2NonbillableMcpTools } from "./v1-p2-nonbillable-mcp.js";
 import { createAuth0JwksCache } from "./auth0-jwks-cache.js";
 import { createD1AdmissionDryRun } from "./d1-admission-dry-run.js";
 import { preparePrivateFixtureAudio } from "./private-fixture-delivery.js";
 import { makeInlineToneFixture } from "./inline-fixture.js";
+import {desktop04CapacityDescriptor,desktop04CapacityResult,V1_DESKTOP_04_CAPACITY_NAME} from "./v1-desktop-04-nonbillable-capacity.js";
+import {DESKTOP_04_UI_RESOURCE} from "./v1-desktop-04-app-surface-offline.js";
 import {
   makeNonbillableGeneratedHostToolResult,
   PROPOSED_GENERATED_HOST_TOOL_NAME
@@ -31,9 +34,31 @@ if(oauthBridgeUi===privateFixtureUi)throw Error("oauth_bridge_ui_specialization_
 const OAUTH_UI_BUILD_MARKER="v6-host-smoke-20261021";
 const oauthUiWithMarker=oauthBridgeUi.replace("</body>",'<p id="oauth-ui-build" style="font-size:11px;opacity:.55">UI '+OAUTH_UI_BUILD_MARKER+'</p></body>');
 if(oauthUiWithMarker===oauthBridgeUi)throw Error("oauth_ui_marker_injection_failed");
+// Dedicated resource prevents a cached diagnostic card from becoming the daily UI.
+const desktop04Ui=oauthBridgeUi
+  .replace('const isDesktop04Bubble=false;','const isDesktop04Bubble=true;')
+  .replace('沈述 04 · 本人确认','听哥哥说话 · 04')
+  .replace('确认后可能产生一次 MiniMax 费用。每份提案只能使用一次，失败不自动重试。',
+    '确认后生成一次语音并计费。每天最多 1 段，北京时间 08:00 更新额度。重复播放不会重新计费。')
+  .replace('确认生成这段 04 语音（可能计费）','确认生成这一段（计费）')
+  .replace('等待 MCP 工具结果…','正在准备语音…')
+  .replaceAll('04 语音准备成功；正在检查能否安全交付。','正在准备确认卡，尚未生成语音。')
+  .replaceAll('正在检查官端私有数据通道（非计费）；尚未生成。','正在检查，尚未生成语音…')
+  .replaceAll('小数据已通过，正在检查大音频传输容量（非计费）…','正在完成播放准备…')
+  .replaceAll('私有数据大小与通道检查均通过（非计费）；可本人确认一次生成。','准备好了。确认后生成一次，随后点上方播放。')
+  .replaceAll('沈述 04 已授权生成结果送达；请点击播放并确认是否出声。','04 已准备好。当前页面可重复播放，刷新后可能失效。')
+  .replaceAll('已提交一次确认；正在等待返回（请勿重试）。','正在生成这一段，请稍等，不用重复点击。')
+  .replaceAll('04 音频已返回界面；请点击上方播放并确认实际有声。','04 已准备好，点上方播放即可。')
+  .replaceAll('正在解码已授权 04 音频…','正在准备播放…')
+  .replaceAll('04 音频源已启动，请确认电脑是否真正听到声音。','播放中。')
+  .replaceAll('04 音频播放结束（是否真正听见仍以本人确认为准）。','播放结束，可以再听一遍。');
+if(desktop04Ui===oauthBridgeUi)throw Error("desktop04_ui_specialization_missing");
 
 export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=null}={}) {
   if(env?.SHENSHU_AUTH_MCP_ENABLED!=="1") return null;
+  // An explicit test-only static key set must never authenticate a production
+  // process, even when the flag was misconfigured. Rotating JWKS still works.
+  if(env?.NODE_ENV==="production"&&env?.SHENSHU_AUTH_STATIC_JWKS_TEST_ONLY==="1") return null;
   try {
     // Production staging prefers live trusted JWKS retrieval; static JSON exists
     // only as an explicit test/dev fallback and is never caller supplied.
@@ -57,7 +82,7 @@ export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=nul
   } catch {return null;}
 }
 
-export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,privateFixtureEnabled=false}={}) {
+export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,privateFixtureEnabled=false,proposalTools=null,desktop04Tools=null}={}) {
   if(typeof verifiedSubject!=="string" || verifiedSubject.length<8) throw Error("missing_verified_subject");
   const server=new Server(
     {name:"shenshu-identity-stage",version:"0.2.0"},
@@ -138,25 +163,62 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     inputSchema:{type:"object",properties:{},additionalProperties:false},
     securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{visibility:["app"]}}
   });
-  server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[{
-    uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE
-  }]:[]}));
+  // Fully nonbillable app-only capacity check exists independently of the
+  // dormant paid desktop04 factory. Only the authenticated private fixture
+  // staging surface can expose it; no environment credential or D1 required.
+  if(privateFixtureEnabled && desktop04Tools===null)tools.push(desktop04CapacityDescriptor());
+  if(proposalTools!==null) {
+    if(!proposalTools || !Array.isArray(proposalTools.tools) ||
+       typeof proposalTools.call!=="function" ||
+       proposalTools.tools.length!==2) throw Error("proposal_bridge_unavailable");
+    tools.push(...proposalTools.tools);
+  }
+  // Dormant, server-injected only; no mere environment flag can mount a paid tool.
+  if(desktop04Tools!==null){
+    if(!privateFixtureEnabled||!desktop04Tools||
+      !Array.isArray(desktop04Tools.tools)||![3,4].includes(desktop04Tools.tools.length)||
+      (desktop04Tools.tools.length===4&&desktop04Tools.tools[3]?.name!=="speak_shenshu_desktop_04")||
+      typeof desktop04Tools.call!=="function"||
+      desktop04Tools.tools[0]?.name!=="prepare_shenshu_desktop_04"||
+      desktop04Tools.tools[1]?.name!=="confirm_shenshu_desktop_04"||
+      desktop04Tools.tools[2]?.name!=="probe_shenshu_desktop_04_capacity"||
+      desktop04Tools.tools[1]?._meta?.ui?.visibility?.length!==1||
+      desktop04Tools.tools[1]._meta.ui.visibility[0]!=="app"||
+      desktop04Tools.tools[2]?._meta?.ui?.visibility?.length!==1||
+      desktop04Tools.tools[2]._meta.ui.visibility[0]!=="app") {
+      throw new Error("desktop04_tools_unavailable");
+    }
+    tools.push(...desktop04Tools.tools);
+  }
+  server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[
+    {uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE},
+    ...(desktop04Tools?[{uri:DESKTOP_04_UI_RESOURCE,name:"沈述 04 语音",mimeType:RESOURCE_MIME_TYPE}]:[])
+  ]:[]}));
   server.setRequestHandler(ReadResourceRequestSchema,async request=>{
-    if(!privateFixtureEnabled||request.params.uri!==PRIVATE_FIXTURE_UI_URI)throw Error("unknown_resource");
-    return {contents:[{uri:PRIVATE_FIXTURE_UI_URI,mimeType:RESOURCE_MIME_TYPE,text:oauthUiWithMarker,
+    const desktop=desktop04Tools!==null&&request.params.uri===DESKTOP_04_UI_RESOURCE;
+    if(!privateFixtureEnabled||(!desktop&&request.params.uri!==PRIVATE_FIXTURE_UI_URI))throw Error("unknown_resource");
+    const desktopUi=desktop04Tools?.tools.length===4?
+      desktop04Ui.replaceAll('每天最多 1 段','每天最多 10 条'):desktop04Ui;
+    return {contents:[{uri:request.params.uri,mimeType:RESOURCE_MIME_TYPE,text:desktop?desktopUi:oauthUiWithMarker,
       _meta:{ui:{prefersBorder:false,csp:{connectDomains:[],resourceDomains:["https://shenshu-voice-mcp.onrender.com"]}}}}]};
   });
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
   server.setRequestHandler(CallToolRequestSchema,async request=>{
     const args=request.params.arguments;
+    if(proposalTools && proposalTools.tools.some(tool=>tool.name===request.params.name)) {
+      return proposalTools.call(request.params.name,args);
+    }
+    if(desktop04Tools && desktop04Tools.tools.some(tool=>tool.name===request.params.name)) {
+      return desktop04Tools.call(request.params.name,args);
+    }
     if(args!==undefined && (
       args===null || typeof args!=="object" || Array.isArray(args) ||
       Object.keys(args).length!==0
     )) throw new Error("invalid_arguments");
     if(request.params.name==="verify_shenshu_login") {
       return {
-        content:[{type:"text",text:"身份已验证。沈述付费语音尚未开放。"}],
-        structuredContent:{authenticated:true,paid_voice_enabled:false}
+        content:[{type:"text",text:desktop04Tools?.tools.length===4 ? "身份已验证。已启用按请求生成04语音，每天最多10条，无需再次确认；普通聊天不生成。" : desktop04Tools ? "身份已验证。04 语音仅在卡片内确认后生成。" : "身份已验证。沈述付费语音尚未开放。"}],
+        structuredContent:{authenticated:true,paid_voice_enabled:desktop04Tools!==null}
       };
     }
     if(request.params.name==="verify_shenshu_d1_admission" && typeof admissionDryRun==="function") {
@@ -176,9 +238,13 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     if(request.params.name===PROPOSED_GENERATED_HOST_TOOL_NAME && privateFixtureEnabled) {
       return makeNonbillableGeneratedHostToolResult();
     }
+    if(request.params.name===V1_DESKTOP_04_CAPACITY_NAME && privateFixtureEnabled && desktop04Tools===null) {
+      return desktop04CapacityResult();
+    }
     if(request.params.name==="probe_oauth_ui_bridge" && privateFixtureEnabled) {
       return {content:[{type:"text",text:"OAuth UI bridge probe OK; no audio or paid tools invoked."}],
-        structuredContent:{bridge_verified:true,paid_voice_enabled:false,audio_returned:false}};
+        structuredContent:{bridge_verified:true,paid_voice_enabled:false,audio_returned:false},
+        _meta:{shenshuWidgetProbe:{version:1,marker:"widget-meta-fixed-nonsecret-v1"}}};
     }
     if(request.params.name==="preview_oauth_hosted_tone_control" && privateFixtureEnabled) {
       return {content:[{type:"text",text:"OAuth 同资源 HTTPS 对照：公开固定提示音，不是私有音频或沈述语音。"}],
@@ -206,7 +272,8 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
  * Returns no identity data to the client. Errors are generic and fail closed.
  */
 export async function handleStagingAuthenticatedMcp(req,res,{
-  env,issuer,audience,resourceMetadataUrl,jwksCache=null
+  env,issuer,audience,resourceMetadataUrl,jwksCache=null,proposalBroker=null,
+  identityVerifier=null,desktop04Factory=null
 }) {
   const challenge='Bearer resource_metadata="'+resourceMetadataUrl+'", scope="voice:speak"';
   const refuse=(status,reason, extra={})=>{
@@ -218,7 +285,11 @@ export async function handleStagingAuthenticatedMcp(req,res,{
     });
     res.end(JSON.stringify({error:reason}));
   };
-  const verifier=createStagingIdentityVerifier(env,{issuer,audience,jwksCache});
+  // Startup composition may pass the exact verifier already shared with the
+  // sealed proposal broker; otherwise the per-request trust path is rebuilt.
+  const verifier=typeof identityVerifier==="function"
+    ? identityVerifier
+    : createStagingIdentityVerifier(env,{issuer,audience,jwksCache});
   if(!verifier) {
     refuse(401,"unauthorized",{"WWW-Authenticate":challenge});
     return;
@@ -237,8 +308,43 @@ export async function handleStagingAuthenticatedMcp(req,res,{
     return;
   }
   const admissionDryRun=createD1AdmissionDryRun({env});
+  // Server-side injection only. No request flag or tool argument can enable
+  // the bridge; the default staging/production behavior is unchanged.
+  let proposalTools=null;
+  if(proposalBroker!==null) {
+    try {
+      proposalTools=createV1P2NonbillableMcpTools({
+        broker:proposalBroker,
+        verifiedRequest:{headers:{authorization:req.headers.authorization}}
+      });
+    } catch {
+      refuse(503,"proposal_bridge_unavailable");
+      return;
+    }
+  }
+  // Do not build this in production unless the trusted server composition
+  // explicitly injects the factory AND staging's dedicated flag is on.
+  // The normal runtime injects it only after desktop staging configuration,
+  // exact deployment identity and sealed D1 schema checks. Default is null.
+  let desktop04Tools=null;
+  if(desktop04Factory!==null &&
+     env.SHENSHU_DESKTOP_04_APP_ENABLED==="1" &&
+     env.SHENSHU_PRIVATE_FIXTURE_ENABLED==="1"){
+    if(typeof desktop04Factory!=="function"){
+      refuse(503,"desktop04_unavailable");return;
+    }
+    try {
+      desktop04Tools=desktop04Factory({
+        verifiedRequest:{headers:{authorization:req.headers.authorization}},
+        verifiedSubject:verifiedIdentity.subject
+      });
+    } catch {
+      refuse(503,"desktop04_unavailable");return;
+    }
+  }
   const server=makeStagingMcpServer({verifiedSubject:verifiedIdentity.subject,admissionDryRun,
-    privateFixtureEnabled:env.SHENSHU_PRIVATE_FIXTURE_ENABLED==="1"});
+    privateFixtureEnabled:env.SHENSHU_PRIVATE_FIXTURE_ENABLED==="1",
+    proposalTools,desktop04Tools});
   const transport=new StreamableHTTPServerTransport({
     sessionIdGenerator:undefined,enableJsonResponse:true
   });

@@ -117,11 +117,21 @@ export function createP2PrivateResultStore({
     async deleteExpired() {
       const now = nowDate(clock);
       try {
-        const deleted = await backend.deleteExpired({ before: now.toISOString() });
-        if (!Number.isSafeInteger(deleted?.deleted ?? 0) || (deleted?.deleted ?? 0) < 0) {
+        const result = await backend.deleteExpired({ before: now.toISOString() });
+        const deleted = result?.deleted ?? 0;
+        if (!Number.isSafeInteger(deleted) || deleted < 0) {
           throw new Error("invalid_delete_result");
         }
-        return Object.freeze({ deleted: deleted?.deleted ?? 0 });
+        if (result?.physicalRemoval !== undefined &&
+            result.physicalRemoval !== "bucket_lifecycle_only") {
+          throw new Error("invalid_delete_result");
+        }
+        return Object.freeze({
+          deleted,
+          ...(result?.physicalRemoval === "bucket_lifecycle_only"
+            ? { physicalRemoval: result.physicalRemoval }
+            : {}),
+        });
       } catch {
         throw new Error("result_store_unavailable");
       }

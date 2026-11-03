@@ -22,7 +22,7 @@
  * durability. A production adapter must implement the same compare-and-set
  * transitions atomically in a durable store.
  */
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { checkText, MAX_WAV_BYTES } from "./contract.js";
 import {
   requireCanonicalPrincipal,
@@ -33,26 +33,31 @@ import {
   V1_OFFLINE_MAX_DAILY_CALLS,
 } from "./v1-offline-paid-pipeline.js";
 import { STAGING_RESOURCE_ORIGIN } from "./protected-resource-identity.js";
+import { V1_P2_STAGE, createV1P2StageEmitter } from "./v1-p2-stage-diagnostics.js";
+import {
+  DIGEST_PATTERN,
+  HANDLE_PATTERN,
+  OPERATION_ID_PATTERN,
+  P2_OPERATION_ACTION,
+  P2_OPERATION_DEFAULT_TTL_MS,
+  P2_OPERATION_MAX_TTL_MS,
+  P2_OPERATION_STATES,
+  textDigest,
+  validRecord,
+} from "./v1-p2-operation-contract.js";
 
-export const P2_OPERATION_ACTION = "generate_shenshu_voice";
-export const P2_OPERATION_DEFAULT_TTL_MS = 5 * 60 * 1000;
-export const P2_OPERATION_MAX_TTL_MS = 15 * 60 * 1000;
-export const P2_OPERATION_STATES = Object.freeze({
-  PENDING_CONFIRMATION: "pending_confirmation",
-  CONFIRMING: "confirming",
-  PROVIDER_PENDING: "provider_pending",
-  COMPLETED: "completed",
-  UNKNOWN: "unknown",
-});
+export {
+  P2_OPERATION_ACTION,
+  P2_OPERATION_DEFAULT_TTL_MS,
+  P2_OPERATION_MAX_TTL_MS,
+  P2_OPERATION_STATES,
+  validRecord,
+};
 
-const HANDLE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
-const OPERATION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const DIGEST_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const FIXED_VOICE = /^[\x21-\x7e]{1,128}$/;
 const INITIATE_KEYS = Object.freeze(["trustedRequest", "text"]);
 const STATUS_KEYS = Object.freeze(["trustedRequest", "handle"]);
 const CONFIRM_KEYS = Object.freeze(["trustedRequest", "handle", "text"]);
-const STATES = new Set(Object.values(P2_OPERATION_STATES));
 
 function hasExactKeys(value, expected) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -72,10 +77,6 @@ function nowMs(clock) {
   return ms;
 }
 
-function textDigest(text) {
-  return createHash("sha256").update(text, "utf8").digest("base64url");
-}
-
 function defaultHandle() {
   return randomBytes(32).toString("base64url");
 }
@@ -84,36 +85,11 @@ function defaultOperationId() {
   return "op_" + randomUUID().replaceAll("-", "");
 }
 
-function validRecord(record) {
-  let safeText = null;
-  try {
-    safeText = checkText(record?.text);
-  } catch {}
-  return record && typeof record === "object" && !Array.isArray(record) &&
-    record.version === 1 &&
-    record.action === P2_OPERATION_ACTION &&
-    HANDLE_PATTERN.test(record.handle ?? "") &&
-    OPERATION_ID_PATTERN.test(record.operationId ?? "") &&
-    typeof record.principal === "string" &&
-    safeText === record.text &&
-    DIGEST_PATTERN.test(record.textDigest ?? "") &&
-    Number.isSafeInteger(record.textBytes) &&
-    record.textBytes >= 1 && record.textBytes <= 800 &&
-    Buffer.byteLength(record.text, "utf8") === record.textBytes &&
-    createHash("sha256").update(record.text, "utf8").digest("base64url") ===
-      record.textDigest &&
-    record.origin === STAGING_RESOURCE_ORIGIN &&
-    Number.isSafeInteger(record.issuedAt) && record.issuedAt >= 0 &&
-    Number.isSafeInteger(record.expiresAt) &&
-    record.expiresAt > record.issuedAt &&
-    record.expiresAt - record.issuedAt <= P2_OPERATION_MAX_TTL_MS &&
-    STATES.has(record.state);
-}
-
 function validDependencies({
   resolveVerifiedPrincipal,
   operationStore,
   paidStore,
+  authorizePaidAttempt,
   synthesize,
   privateResultStore,
   voiceId,
@@ -123,14 +99,16 @@ function validDependencies({
   makeOperationId,
   operationTtlMs,
 }) {
+  const validPaidStore = paidStore &&
+    typeof paidStore.reserveAtomic === "function" &&
+    typeof paidStore.issue === "function" &&
+    typeof paidStore.consume === "function";
+  const hasAuthorizePaidAttempt = authorizePaidAttempt != null;
   return typeof resolveVerifiedPrincipal === "function" &&
     operationStore &&
     ["createPending", "get", "claim", "markProviderPending", "markCompleted", "markUnknown"]
       .every(name => typeof operationStore[name] === "function") &&
-    paidStore &&
-    typeof paidStore.reserveAtomic === "function" &&
-    typeof paidStore.issue === "function" &&
-    typeof paidStore.consume === "function" &&
+    (hasAuthorizePaidAttempt ? typeof authorizePaidAttempt === "function" : validPaidStore) &&
     typeof synthesize === "function" &&
     privateResultStore &&
     typeof privateResultStore.save === "function" &&
@@ -180,6 +158,7 @@ export function createV1P2StableOperationBroker(options = {}) {
     resolveVerifiedPrincipal,
     operationStore,
     paidStore,
+    authorizePaidAttempt = null,
     synthesize,
     privateResultStore,
     voiceId,
@@ -188,12 +167,15 @@ export function createV1P2StableOperationBroker(options = {}) {
     makeHandle = defaultHandle,
     makeOperationId = defaultOperationId,
     operationTtlMs = P2_OPERATION_DEFAULT_TTL_MS,
+    // Trusted offline-only hook. server.js never supplies it.
+    onStageDiagnostic = null,
   } = options;
 
   if (!validDependencies({
     resolveVerifiedPrincipal,
     operationStore,
     paidStore,
+    authorizePaidAttempt,
     synthesize,
     privateResultStore,
     voiceId,
@@ -207,6 +189,7 @@ export function createV1P2StableOperationBroker(options = {}) {
   }
 
   const fixedVoiceId = voiceId.trim();
+  const emitStage = createV1P2StageEmitter(onStageDiagnostic);
 
   async function verifiedPrincipal(trustedRequest) {
     let identity;
@@ -400,6 +383,7 @@ export function createV1P2StableOperationBroker(options = {}) {
       }
 
       const operationId = claim.operationId;
+      emitStage(V1_P2_STAGE.D1_CLAIMED);
       try {
         const marked = await operationStore.markProviderPending({
           principal,
@@ -408,7 +392,9 @@ export function createV1P2StableOperationBroker(options = {}) {
           now: nowMs(clock),
         });
         if (marked?.updated !== true) throw new Error("operation_state_invalid");
+        emitStage(V1_P2_STAGE.D1_PENDING_READY);
       } catch {
+        emitStage(V1_P2_STAGE.D1_PENDING_FAILED);
         await closeAsUnknown({ principal, handle: input.handle, operationId });
         throw new Error("operation_outcome_unknown");
       }
@@ -424,7 +410,31 @@ export function createV1P2StableOperationBroker(options = {}) {
             return Object.freeze({ verified: true, subject: actual });
           },
           store: paidStore,
-          synthesize,
+          authorize: authorizePaidAttempt
+            ? async ({ textBytes }) => {
+              const admission = await authorizePaidAttempt({
+                principal,
+                handle: input.handle,
+                operationId,
+                textDigest: digest,
+                textBytes,
+                now: nowMs(clock),
+              });
+              observedPrincipal = admission?.principal ?? null;
+              return admission;
+            }
+            : undefined,
+          synthesize: async args => {
+            emitStage(V1_P2_STAGE.PROVIDER_ATTEMPT);
+            try {
+              const result = await synthesize(args);
+              emitStage(V1_P2_STAGE.PROVIDER_RETURNED);
+              return result;
+            } catch (error) {
+              emitStage(V1_P2_STAGE.PROVIDER_FAILED);
+              throw error;
+            }
+          },
           voiceId: fixedVoiceId,
           maximumDailyCalls,
           clock,
@@ -435,23 +445,32 @@ export function createV1P2StableOperationBroker(options = {}) {
           text: safeText,
         });
         requireSameCanonicalPrincipal(principal, observedPrincipal);
+        emitStage(V1_P2_STAGE.PIPELINE_READY);
       } catch {
+        emitStage(V1_P2_STAGE.PIPELINE_FAILED);
         await closeAsUnknown({ principal, handle: input.handle, operationId });
         throw new Error("operation_outcome_unknown");
       }
 
       const audio = validAudioResult(pipelineResult);
       if (!audio) {
+        emitStage(V1_P2_STAGE.AUDIO_FAILED);
         await closeAsUnknown({ principal, handle: input.handle, operationId });
         throw new Error("operation_outcome_unknown");
       }
 
+      emitStage(V1_P2_STAGE.AUDIO_READY);
+      let completionStarted = false;
       try {
+        emitStage(V1_P2_STAGE.PRIVATE_SAVE_STARTED);
         const saved = await privateResultStore.save({ principal, audio });
         if (!Number.isFinite(saved?.durationSeconds) ||
             typeof saved?.expiresAt !== "string") {
           throw new Error("result_store_invalid");
         }
+        emitStage(V1_P2_STAGE.PRIVATE_SAVE_READY);
+        completionStarted = true;
+        emitStage(V1_P2_STAGE.D1_COMPLETION_STARTED);
         const completed = await operationStore.markCompleted({
           principal,
           handle: input.handle,
@@ -459,7 +478,11 @@ export function createV1P2StableOperationBroker(options = {}) {
           now: nowMs(clock),
         });
         if (completed?.updated !== true) throw new Error("operation_state_invalid");
+        emitStage(V1_P2_STAGE.D1_COMPLETION_READY);
       } catch {
+        emitStage(completionStarted
+          ? V1_P2_STAGE.D1_COMPLETION_FAILED
+          : V1_P2_STAGE.PRIVATE_SAVE_FAILED);
         await closeAsUnknown({ principal, handle: input.handle, operationId });
         throw new Error("operation_outcome_unknown");
       }

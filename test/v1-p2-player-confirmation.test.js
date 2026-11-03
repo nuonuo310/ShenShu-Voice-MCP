@@ -359,6 +359,9 @@ test("MCP initiate/status remain nonbillable and the owner player sees exact pro
 
   const owner = await pendingPage(h.handler, sessionCookie(PRINCIPAL));
   assert.equal(owner.status, 200);
+  // The real browser navigates via a plain POST form. With no-referrer it sends
+  // Origin: null, which is (correctly) rejected before a paid operation.
+  assert.equal(owner.headers["Referrer-Policy"], "same-origin");
   assert.match(owner.headers["Content-Security-Policy"], /form-action 'self'/);
   assert.match(owner.headers["Content-Security-Policy"], /default-src 'none'/);
   assert.equal(owner.text.includes(firstText), true);
@@ -469,6 +472,7 @@ test("CSRF, Origin, fetch metadata, content type and form shape are fail-closed"
     { expected: 400, form: { csrf: firstForm.csrf, handle: firstForm.handle }, extra: { text: "caller text" } },
     { expected: 400, form: { csrf: firstForm.csrf, handle: firstForm.handle }, body: "csrf=" + encodeURIComponent(firstForm.csrf) },
     { expected: 403, form: firstForm, headers: { origin: "https://wrong.invalid" } },
+    { expected: 403, form: firstForm, headers: { origin: "null" } },
     { expected: 403, form: firstForm, headers: { "sec-fetch-site": "cross-site" } },
     { expected: 403, form: firstForm, headers: { "sec-fetch-mode": "cors" } },
     { expected: 415, form: firstForm, headers: { "content-type": "application/json" } },

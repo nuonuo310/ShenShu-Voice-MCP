@@ -42,7 +42,7 @@ const PLAYER_PATHS=new Set([
   PRIVATE_PLAYER_CALLBACK_PATH,
   PRIVATE_PLAYER_AUDIO_PATH,
 ]);
-const PLAYER_CSP="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; media-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
+const PLAYER_CSP="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; media-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
 const FIXED_WAV=Buffer.from(makeInlineToneFixture().audioBase64,"base64");
 validateWav(FIXED_WAV);
 

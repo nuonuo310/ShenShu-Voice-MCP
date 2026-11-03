@@ -161,7 +161,8 @@ test("the standalone page has a strict CSP, no external assets and no automatic 
   assert.equal(response.status,200);
   assert.equal(response.headers["Content-Type"],"text/html; charset=utf-8");
   assert.match(response.headers["Content-Security-Policy"],/default-src 'none'/);
-  assert.match(response.headers["Content-Security-Policy"],/media-src 'self'/);
+  assert.match(response.headers["Content-Security-Policy"],/media-src 'self' blob:/);
+  assert.match(response.headers["Content-Security-Policy"],/connect-src 'self'/);
   assert.match(response.headers["Content-Security-Policy"],/frame-ancestors 'none'/);
   assert.equal(response.headers["X-Frame-Options"],"DENY");
   assert.match(response.text,/href="\/player\/login"/);
@@ -472,7 +473,7 @@ test("the player source has no provider, D1, public URL or chat-audio path", asy
   assert.match(source,/Authorization:"Bearer "/);
   assert.doesNotMatch(source,/client_secret|MINIMAX|MiniMax|cloudflare|d1-|ui\/message|sendMessage/i);
   assert.doesNotMatch(source,/console\.(?:log|error|warn)/);
-  assert.match(server,/handlePrivateWebPlayer\(req,\s*res,\s*url\)/);
-  assert.ok(server.indexOf("handlePrivateWebPlayer(req, res, url)")<
-    server.indexOf("handleProtectedResourceShell(req, res, url.pathname)"));
+  assert.match(server,/handlePrivateWebPlayer\(req,\s*res,\s*url,\s*\{\s*env,\s*fetchImpl\s*\}\)/);
+  assert.ok(server.indexOf("handlePrivateWebPlayer(req, res, url, { env, fetchImpl })")<
+    server.indexOf("handleProtectedResourceShell(req, res, url.pathname"));
 });

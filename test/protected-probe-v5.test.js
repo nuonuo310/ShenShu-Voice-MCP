@@ -418,6 +418,8 @@ function makeUiHarness(html, href, { contextStateAfterResume = "running" } = {})
   vm.runInNewContext(script, {
     window,
     document,
+    setTimeout: (fn, ms) => { const timer = setTimeout(fn, ms); timer.unref(); return timer; },
+    clearTimeout,
     atob,
     btoa,
     requestAnimationFrame: () => 1,

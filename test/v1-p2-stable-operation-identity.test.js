@@ -4,6 +4,7 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { deriveCanonicalPrincipal } from "../src/canonical-principal.js";
 import { makeInlineToneFixture } from "../src/inline-fixture.js";
+import { V1_P2_STAGE, createV1P2StageEmitter } from "../src/v1-p2-stage-diagnostics.js";
 import {
   AUTH0_ISSUER,
   STAGING_RESOURCE_ORIGIN,
@@ -164,6 +165,7 @@ function makeHarness({
   backend = makeResultBackend(),
   maximumDailyCalls = 3,
   operationTtlMs = 60_000,
+  onStageDiagnostic = null,
 } = {}) {
   const providerArgs = [];
   const provider = async args => {
@@ -185,6 +187,7 @@ function makeHarness({
     maximumDailyCalls,
     clock: () => new Date(currentMs),
     operationTtlMs,
+    onStageDiagnostic,
   });
   return {
     broker: makeBroker(),
@@ -574,6 +577,122 @@ test("lost handle is not recovered from text and identical text creates independ
     text,
   }), /operation_not_found/);
   assert.deepEqual(h.paidStore.calls, []);
+});
+
+test("offline stage observer reports fixed codes only and cannot leak user input", async () => {
+  resetClock();
+  const events = [];
+  const secretText = "user-private-text-should-not-leak";
+  const h = makeHarness({ onStageDiagnostic: value => events.push(value) });
+  const pending = await h.broker.initiate({
+    trustedRequest: trustedRequest(), text: secretText,
+  });
+  const result = await h.broker.confirm({
+    trustedRequest: trustedRequest(), handle: pending.handle, text: secretText,
+  });
+  assert.equal(result.status, "completed");
+  assert.deepEqual(events, [
+    V1_P2_STAGE.D1_CLAIMED,
+    V1_P2_STAGE.D1_PENDING_READY,
+    V1_P2_STAGE.PROVIDER_ATTEMPT,
+    V1_P2_STAGE.PROVIDER_RETURNED,
+    V1_P2_STAGE.PIPELINE_READY,
+    V1_P2_STAGE.AUDIO_READY,
+    V1_P2_STAGE.PRIVATE_SAVE_STARTED,
+    V1_P2_STAGE.PRIVATE_SAVE_READY,
+    V1_P2_STAGE.D1_COMPLETION_STARTED,
+    V1_P2_STAGE.D1_COMPLETION_READY,
+  ]);
+  for (const event of events) {
+    assert.equal(typeof event, "string");
+    assert.ok(Object.values(V1_P2_STAGE).includes(event));
+  }
+  assert.doesNotMatch(JSON.stringify(events),
+    /user-private|auth0|op_|grant_|secret|Bearer|RIFF|base64/i);
+  const replay = await h.broker.confirm({
+    trustedRequest: trustedRequest(), handle: pending.handle, text: secretText,
+  });
+  assert.equal(replay.providerAttempts, 0);
+  assert.equal(events.length, 10);
+  assert.equal(h.providerArgs.length, 1);
+});
+
+test("offline diagnostic codes distinguish failed provider, private PUT, and D1 completion", async () => {
+  const cases = [
+    {
+      name: "provider",
+      opts: {
+        synthesize: async () => { throw new Error("provider secret error"); },
+      },
+      lastCode: V1_P2_STAGE.PIPELINE_FAILED,
+      banned: V1_P2_STAGE.PRIVATE_SAVE_STARTED,
+    },
+    {
+      name: "private PUT",
+      opts: { backend: makeResultBackend({ failPut: true }) },
+      lastCode: V1_P2_STAGE.PRIVATE_SAVE_FAILED,
+      banned: V1_P2_STAGE.D1_COMPLETION_STARTED,
+    },
+    {
+      name: "D1 completion",
+      opts: {
+        operationStore: {
+          ...createInMemoryStableOperationStoreForTest(),
+          async markCompleted() { throw new Error("completion_write_lost"); },
+        },
+      },
+      lastCode: V1_P2_STAGE.D1_COMPLETION_FAILED,
+      banned: V1_P2_STAGE.D1_COMPLETION_READY,
+    },
+  ];
+  for (const item of cases) {
+    resetClock();
+    const events = [];
+    const h = makeHarness({
+      ...item.opts, onStageDiagnostic: code => events.push(code),
+    });
+    const inputText = "synthetic fail " + item.name;
+    const pending = await h.broker.initiate({
+      trustedRequest: trustedRequest(), text: inputText,
+    });
+    const confirmInput = {
+      trustedRequest: trustedRequest(),
+      handle: pending.handle,
+      text: inputText,
+    };
+    await assert.rejects(h.broker.confirm(confirmInput), /operation_outcome_unknown/);
+    assert.equal(events.at(-1), item.lastCode, item.name);
+    assert.ok(!events.includes(item.banned), item.name);
+    assert.deepEqual(await h.broker.status({
+      trustedRequest: trustedRequest(), handle: pending.handle,
+    }), { status: "unknown", retryable: false });
+    await assert.rejects(h.broker.confirm(confirmInput), /operation_outcome_unknown/);
+    assert.equal(h.providerArgs.length, 1);
+    assert.deepEqual(h.paidStore.calls, ["reserve", "issue", "consume"]);
+    assert.equal(events.at(-1), item.lastCode, item.name);
+  }
+});
+
+test("offline observer errors cannot change paid safety, and invalid stage codes are refused", async () => {
+  resetClock();
+  const h = makeHarness({
+    onStageDiagnostic() { throw new Error("observer unavailable"); },
+  });
+  const text = "observer errors are ignored";
+  const pending = await h.broker.initiate({ trustedRequest: trustedRequest(), text });
+  const completed = await h.broker.confirm({
+    trustedRequest: trustedRequest(), handle: pending.handle, text,
+  });
+  assert.equal(completed.status, "completed");
+  assert.equal(h.providerArgs.length, 1);
+  assert.deepEqual(h.paidStore.calls, ["reserve", "issue", "consume"]);
+  const observed = [];
+  const emit = createV1P2StageEmitter(code => observed.push(code));
+  emit(V1_P2_STAGE.D1_CLAIMED);
+  assert.deepEqual(observed, ["d1_claimed"]);
+  assert.throws(() => emit("my secret arbitrary stage"), /diagnostic_stage_invalid/);
+  assert.throws(() => createV1P2StageEmitter({ value: "arbitrary" }),
+    /diagnostic_observer_invalid/);
 });
 
 test("stable operation module remains unmounted and contains no cloud or provider I/O", async () => {

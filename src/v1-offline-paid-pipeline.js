@@ -31,6 +31,7 @@ function defaultGrantId() {
 export function createV1OfflinePaidPipeline({
   resolveVerifiedPrincipal,
   store,
+  authorize = null,
   synthesize,
   voiceId,
   maximumDailyCalls = V1_OFFLINE_MAX_DAILY_CALLS,
@@ -38,11 +39,13 @@ export function createV1OfflinePaidPipeline({
   makeRequestId = randomUUID,
   makeGrantId = defaultGrantId,
 } = {}) {
+  const hasAuthorizeOverride = authorize != null;
+  const hasStore = store &&
+    typeof store.reserveAtomic === "function" &&
+    typeof store.issue === "function" &&
+    typeof store.consume === "function";
   if (typeof resolveVerifiedPrincipal !== "function" ||
-      !store ||
-      typeof store.reserveAtomic !== "function" ||
-      typeof store.issue !== "function" ||
-      typeof store.consume !== "function" ||
+      (hasAuthorizeOverride ? typeof authorize !== "function" : !hasStore) ||
       typeof synthesize !== "function" ||
       typeof voiceId !== "string" ||
       !FIXED_VOICE.test(voiceId.trim()) ||
@@ -55,11 +58,14 @@ export function createV1OfflinePaidPipeline({
   }
 
   const fixedVoiceId = voiceId.trim();
-  const reserveAtomic = args => store.reserveAtomic(args);
-  const grantStore = Object.freeze({
+  // The injected authorize override is for an already-admitted operation
+  // (e.g. the D1 single-statement claim). It must still return the exact
+  // one-time admission receipt shape; it cannot supply a provider or model.
+  const reserveAtomic = hasStore ? args => store.reserveAtomic(args) : null;
+  const grantStore = hasStore ? Object.freeze({
     issue: args => store.issue(args),
     consume: args => store.consume(args),
-  });
+  }) : null;
 
   return async function invoke(input = {}) {
     if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -78,19 +84,21 @@ export function createV1OfflinePaidPipeline({
     const requestId = makeRequestId();
     if (!IDENT.test(requestId ?? "")) throw new Error("invalid_request_id");
 
-    const authorize = createDurablePaidAuthorizer({
-      resolveVerifiedPrincipal,
-      reserveAtomic,
-      grantStore,
-      maximumDailyCalls,
-      clock,
-      makeRequestId: () => requestId,
-      makeGrantId,
-    });
+    const authorizeAttempt = hasAuthorizeOverride
+      ? authorize
+      : createDurablePaidAuthorizer({
+        resolveVerifiedPrincipal,
+        reserveAtomic,
+        grantStore,
+        maximumDailyCalls,
+        clock,
+        makeRequestId: () => requestId,
+        makeGrantId,
+      });
 
     // Admission consumes the server-only grant before this function can reach
     // the provider. There is no refund path and no caller-visible grant.
-    const admission = await authorize({
+    const admission = await authorizeAttempt({
       trustedRequest: input.trustedRequest,
       textBytes,
     });

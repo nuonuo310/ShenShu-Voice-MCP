@@ -8,10 +8,10 @@
  * owner-scoped handle and immutable text digest before the shared P2 broker
  * performs one compare-and-set claim and at most one paid attempt.
  *
- * This module is deliberately unmounted by server.js. Its in-memory operation
- * store is a test fixture. Real D1 atomicity, player-to-MCP identity continuity,
- * durable private text/audio storage and a real browser user gesture remain
- * independent live-qualification gates.
+ * The normal server mounts this handler only through the fully gated paid
+ * candidate composition. Its in-memory operation store remains a test fixture;
+ * production wiring requires the sealed D1 004+005 store, durable private
+ * text/audio storage and a real browser user gesture.
  */
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { checkText } from "./contract.js";
@@ -20,7 +20,7 @@ import { readPrivatePlayerSession } from "./private-web-player.js";
 import {
   P2_OPERATION_ACTION,
   P2_OPERATION_STATES,
-} from "./v1-p2-stable-operation-identity.js";
+} from "./v1-p2-operation-contract.js";
 
 export const PRIVATE_PLAYER_PENDING_PATH = "/player/pending";
 export const PRIVATE_PLAYER_CONFIRM_PATH = "/player/confirm";
@@ -396,6 +396,10 @@ export function createV1P2PlayerConfirmationHandler({
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Resource-Policy": "same-origin",
       "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), autoplay=()",
+      // HTML form navigation must retain its exact Origin; no-referrer makes
+      // browsers send Origin: null, which our strict same-origin guard denies.
+      // Keep referrer data inside this origin and preserve all CSRF checks.
+      "Referrer-Policy": "same-origin",
       Vary: "Cookie",
     }, renderPendingPage({ proposals: records, session, now, sessionSecret }));
   }
