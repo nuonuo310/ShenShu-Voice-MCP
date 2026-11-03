@@ -82,7 +82,8 @@ export function createDesktopDirect04Offline({
     });
     // Same generated-WAV contract as the already-audible desktop OAuth
     // host bridge. No public audio URL and no Kodo storage.
-    prepareGeneratedWebAudioBridge(result.record);
+    const desktopRecord=Object.freeze({...result.record,desktopDirect04:true});
+    prepareGeneratedWebAudioBridge(desktopRecord);
     // The existing bubble accepts the same generated-WAV record shape.
     // Never place WAV bytes or text in model-visible tool content/structuredContent.
     // Per OpenAI MCP Apps reference, result _meta is widget-only. The future
@@ -90,7 +91,7 @@ export function createDesktopDirect04Offline({
     return Object.freeze({
       content:[{type:"text",text:"已获得一次授权语音的结果；请在组件中手动播放。"}],
       structuredContent:{status:"audio_ready",voiceLabel:"沈述",generated:true},
-      _meta:{shenshuPrivateAudio:{record:result.record}},
+      _meta:{shenshuPrivateAudio:{record:desktopRecord}},
     });
   };
 }
