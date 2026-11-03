@@ -207,7 +207,8 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     }
     if(request.params.name==="probe_oauth_ui_bridge" && privateFixtureEnabled) {
       return {content:[{type:"text",text:"OAuth UI bridge probe OK; no audio or paid tools invoked."}],
-        structuredContent:{bridge_verified:true,paid_voice_enabled:false,audio_returned:false}};
+        structuredContent:{bridge_verified:true,paid_voice_enabled:false,audio_returned:false},
+        _meta:{shenshuWidgetProbe:{version:1,marker:"widget-meta-fixed-nonsecret-v1"}}};
     }
     if(request.params.name==="preview_oauth_hosted_tone_control" && privateFixtureEnabled) {
       return {content:[{type:"text",text:"OAuth 同资源 HTTPS 对照：公开固定提示音，不是私有音频或沈述语音。"}],
