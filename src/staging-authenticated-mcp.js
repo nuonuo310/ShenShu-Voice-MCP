@@ -151,12 +151,15 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
   // Dormant, server-injected only; no mere environment flag can mount a paid tool.
   if(desktop04Tools!==null){
     if(!privateFixtureEnabled||!desktop04Tools||
-      !Array.isArray(desktop04Tools.tools)||desktop04Tools.tools.length!==2||
+      !Array.isArray(desktop04Tools.tools)||desktop04Tools.tools.length!==3||
       typeof desktop04Tools.call!=="function"||
       desktop04Tools.tools[0]?.name!=="prepare_shenshu_desktop_04"||
       desktop04Tools.tools[1]?.name!=="confirm_shenshu_desktop_04"||
+      desktop04Tools.tools[2]?.name!=="probe_shenshu_desktop_04_capacity"||
       desktop04Tools.tools[1]?._meta?.ui?.visibility?.length!==1||
-      desktop04Tools.tools[1]._meta.ui.visibility[0]!=="app") {
+      desktop04Tools.tools[1]._meta.ui.visibility[0]!=="app"||
+      desktop04Tools.tools[2]?._meta?.ui?.visibility?.length!==1||
+      desktop04Tools.tools[2]._meta.ui.visibility[0]!=="app") {
       throw new Error("desktop04_tools_unavailable");
     }
     tools.push(...desktop04Tools.tools);
