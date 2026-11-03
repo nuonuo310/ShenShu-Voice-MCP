@@ -217,7 +217,7 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     )) throw new Error("invalid_arguments");
     if(request.params.name==="verify_shenshu_login") {
       return {
-        content:[{type:"text",text:desktop04Tools ? "身份已验证。04 语音仅在卡片内确认后生成。" : "身份已验证。沈述付费语音尚未开放。"}],
+        content:[{type:"text",text:desktop04Tools?.tools.length===4 ? "身份已验证。已启用按请求生成04语音，每天最多10条，无需再次确认；普通聊天不生成。" : desktop04Tools ? "身份已验证。04 语音仅在卡片内确认后生成。" : "身份已验证。沈述付费语音尚未开放。"}],
         structuredContent:{authenticated:true,paid_voice_enabled:desktop04Tools!==null}
       };
     }
