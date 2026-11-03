@@ -63,14 +63,24 @@ test("owner-approved direct inline host result preserves the original text and v
   const result=await t.invoke(request());
   assert.deepEqual(t.events,["consume","provider"]);
   assert.equal(result.content.length,1);
-  assert.equal(result.structuredContent.record.text,ORIGINAL);
-  assert.equal(result.structuredContent.record.audioUrl,undefined);
-  assert.equal(result.structuredContent.record.audioMimeType,"audio/wav");
-  assert.equal(result.structuredContent.record.source,"minimax");
-  assert.equal(result.structuredContent.record.generated,true);
-  assert.equal(result.structuredContent.record.voiceLabel,"沈述");
-  assert.deepEqual(Buffer.from(result.structuredContent.record.audioBase64,"base64"),WAV);
-  const playback=prepareGeneratedWebAudioBridge(result.structuredContent.record);
+  assert.equal(result.structuredContent.status,"audio_ready");
+  assert.equal(result.structuredContent.generated,true);
+  assert.equal(result._meta.shenshuPrivateAudio.record.text,ORIGINAL);
+  assert.doesNotMatch(JSON.stringify({
+    content:result.content,
+    structuredContent:result.structuredContent,
+  }),/audioBase64|ORIGINAL/);
+  assert.doesNotMatch(JSON.stringify({
+    content:result.content,
+    structuredContent:result.structuredContent,
+  }),/RIFF|WAVE/);
+  assert.equal(result._meta.shenshuPrivateAudio.record.audioUrl,undefined);
+  assert.equal(result._meta.shenshuPrivateAudio.record.audioMimeType,"audio/wav");
+  assert.equal(result._meta.shenshuPrivateAudio.record.source,"minimax");
+  assert.equal(result._meta.shenshuPrivateAudio.record.generated,true);
+  assert.equal(result._meta.shenshuPrivateAudio.record.voiceLabel,"沈述");
+  assert.deepEqual(Buffer.from(result._meta.shenshuPrivateAudio.record.audioBase64,"base64"),WAV);
+  const playback=prepareGeneratedWebAudioBridge(result._meta.shenshuPrivateAudio.record);
   assert.deepEqual(Buffer.from(playback.audioBytes),WAV);
   assert.equal(playback.durationSeconds,0.7);
   assert.equal(playback.dataUrl,undefined);
