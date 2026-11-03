@@ -404,6 +404,8 @@ export async function createShenShuRuntimeServer({
     paidStartupCode,
     desktop04Mounted: desktop04.factory !== null,
     desktop04StartupCode: desktop04.code,
+    desktop04OnRequestEnabled: desktop04.onRequestEnabled === true,
+    desktop04DailyLimit: desktop04.factory ? desktop04.maximumDailyCalls : 0,
     kodoProbeMounted: kodoProbe !== null,
   });
 }
@@ -444,6 +446,8 @@ if (process.env.NODE_ENV !== "test") {
       paid_startup_code: runtime.paidStartupCode,
       desktop04_mounted: runtime.desktop04Mounted === true,
       desktop04_startup_code: runtime.desktop04StartupCode ?? "startup_exception",
+      desktop04_on_request_enabled: runtime.desktop04OnRequestEnabled === true,
+      desktop04_daily_limit: runtime.desktop04DailyLimit ?? 0,
       paid_voice_enabled: runtime.paidConfirmMounted === true || runtime.desktop04Mounted === true,
       kodo_probe_mounted: runtime.kodoProbeMounted === true
     }));

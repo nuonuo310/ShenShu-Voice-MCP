@@ -1,5 +1,6 @@
 /** Desktop host composition. Paid OFF by default; no Kodo or public audio URL. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import {checkText} from './contract.js';
 import {requireCanonicalPrincipal} from './canonical-principal.js';
 import {createD1P2ConfirmationOperationStore} from './d1-p2-confirmation-operation-store.js';
 import {createV1P2NonbillableProposalBroker} from './v1-p2-nonbillable-proposal-broker.js';
@@ -10,6 +11,7 @@ import {createDesktopDirect04Offline,DESKTOP_04_VOICE_ID,DESKTOP_04_MODEL_ID} fr
 import {synthesizeMiniMax} from './minimax-adapter.js';
 
 export const DESKTOP_04_FLAG='SHENSHU_DESKTOP_04_APP_ENABLED';
+export const DESKTOP_04_ON_REQUEST_FLAG='SHENSHU_DESKTOP_04_ON_REQUEST_ENABLED';
 const PREFIX='desktop04_';
 const FLAGS=['SHENSHU_STAGING_FINAL_WIRING_ENABLED','SHENSHU_STAGING_PAID_CONFIRM_ENABLED',
  'SHENSHU_STAGING_REAL_PROVIDER_ENABLED','SHENSHU_STAGING_PRIVATE_AUDIO_ENABLED'];
@@ -34,7 +36,9 @@ export function assessDesktop04StagingConfig(env,{currentSha}={}){
 }
 
 /** Store is the existing sealed, single-statement D1 admission store. */
-export function createDesktop04D1Factory({operationStore,resolveVerifiedIdentity,synthesize,clock=Date.now,operationTtlMs}={}){
+export function createDesktop04D1Factory({operationStore,resolveVerifiedIdentity,synthesize,clock=Date.now,operationTtlMs,onRequestEnabled=false,maximumDailyCalls=1}={}){
+ if(typeof onRequestEnabled!=='boolean'||![1,10].includes(maximumDailyCalls)||
+    (onRequestEnabled&&maximumDailyCalls!==10))throw Error('desktop04_policy_invalid');
  if(!operationStore||typeof resolveVerifiedIdentity!=='function'||typeof synthesize!=='function')throw Error('desktop04_unavailable');
  const broker=createV1P2NonbillableProposalBroker({
   operationStore,resolveVerifiedPrincipal:resolveVerifiedIdentity,clock:()=>nowMs(clock),
@@ -56,8 +60,34 @@ export function createDesktop04D1Factory({operationStore,resolveVerifiedIdentity
   if(row.expiresAt<=nowMs(clock))throw Error('desktop04_expired');
   return row;
  }
+ async function prepareOnRequest({trustedRequest,text,requestKey}){
+  const safeText=checkText(text);
+  const {principal}=await resolvePrincipal(trustedRequest);
+  if(!onRequestEnabled||typeof requestKey!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(requestKey))throw Error('not_authorized');
+  // Stable per explicit request and owner, across retries and process restarts.
+  const digest=createHash('sha256').update('desktop04-request-v1\0'+principal+'\0'+requestKey).digest('base64url');
+  const handle=createHash('sha256').update('desktop04-handle-v1\0'+digest).digest('base64url');
+  async function existing(){
+   const row=await operationStore.get({principal,handle});
+   if(!row)return null;
+   if(row.text!==safeText)throw Error('request_key_text_mismatch');
+   return row.state==='pending_confirmation'&&row.expiresAt>nowMs(clock)?
+    {status:'pending_confirmation',handle,expiresAt:new Date(row.expiresAt).toISOString(),billable:false}:
+    {status:'not_generated',reason:row.state==='pending_confirmation'?'expired':'used',retryable:false};
+  }
+  const previous=await existing();if(previous)return previous;
+  const requestBroker=createV1P2NonbillableProposalBroker({operationStore,
+   resolveVerifiedPrincipal:resolveVerifiedIdentity,clock:()=>nowMs(clock),makeHandle:()=>handle,
+   makeOperationId:()=>PREFIX+'auto_'+digest,...(operationTtlMs===undefined?{}:{operationTtlMs})});
+  try{return await requestBroker.initiate({trustedRequest,text:safeText});}
+  catch(error){
+   // A concurrent insert may already have won. Never manufacture another ID.
+   const winner=await existing();if(winner)return winner;throw error;
+  }
+ }
  return ({verifiedRequest})=>createDesktop04AppSurfaceOffline({
   verifiedRequest,resolveVerifiedPrincipal:resolvePrincipal,broker,clock:()=>nowMs(clock),
+  prepareOnRequest:onRequestEnabled?prepareOnRequest:null,
   loadOwnedPending:async input=>{
    const row=await readPending(input);
    return {...row,expiresAt:new Date(row.expiresAt).toISOString()};
@@ -77,7 +107,7 @@ export function createDesktop04D1Factory({operationStore,resolveVerifiedIdentity
      claimed=true;
      if(claim.operationId!==row.operationId||claim.requestId!==row.operationId)throw Error('admission_invalid');
      const attested=await operationStore.attestAdmission({principal,operationId:row.operationId});
-     if(attested?.admitted!==true||attested.slot!==1)throw Error('admission_invalid');
+     if(attested?.admitted!==true||!Number.isSafeInteger(attested.slot)||attested.slot<1||attested.slot>maximumDailyCalls)throw Error('admission_invalid');
      return {allowed:true,oneTime:true,consumed:true,principal,requestId:row.operationId};
     },
    });
@@ -104,14 +134,16 @@ export async function composeDesktop04StagingRuntime({env,composed,createD1Clien
   const raw=env[PRIVATE_TEXT_MASTER_KEY_ENV];
   const masterKey=Buffer.from(raw,/^[A-Za-z0-9_-]{43}$/.test(raw)?'base64url':'base64');
   const textSealer=createPrivateTextSealer({masterKey});
-  const operationStore=createD1P2ConfirmationOperationStore({client:createD1Client({env}),maximumDailyCalls:1,textSealer});
+  const onRequestEnabled=env[DESKTOP_04_ON_REQUEST_FLAG]==='1';
+  const maximumDailyCalls=onRequestEnabled?10:1;
+  const operationStore=createD1P2ConfirmationOperationStore({client:createD1Client({env}),maximumDailyCalls,textSealer,desktopOnRequest:onRequestEnabled});
   const schema=await operationStore.verifySchema();
   if(schema?.ok!==true||schema.sealedText!==true)throw Error('schema_unqualified');
   const synthesize=async({text,modelId,voiceId})=>{
    if(modelId!==DESKTOP_04_MODEL_ID||voiceId!==DESKTOP_04_VOICE_ID)throw Error('provider_config_mismatch');
    return synthesizeMiniMax({text,modelId,voiceId,apiKey:env.SHENSHU_MINIMAX_API_KEY,fetchImpl});
   };
-  const factory=createDesktop04D1Factory({operationStore,resolveVerifiedIdentity:composed.identityVerifier,synthesize,clock,operationTtlMs});
-  return Object.freeze({code:'desktop04_ready',factory});
+  const factory=createDesktop04D1Factory({operationStore,resolveVerifiedIdentity:composed.identityVerifier,synthesize,clock,operationTtlMs,onRequestEnabled,maximumDailyCalls});
+  return Object.freeze({code:'desktop04_ready',factory,onRequestEnabled,maximumDailyCalls});
  }catch{return Object.freeze({code:'desktop04_runtime_unavailable',factory:null});}
 }

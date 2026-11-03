@@ -1,74 +1,81 @@
-# Desktop 04 — occasional use
+# Desktop 04 — speech only when requested
 
-The owner heard one real 04 reply in the desktop ChatGPT card on 2026-11-04.
-That accepted audio path and the fixed voice/model remain unchanged. This
-cleanup prepares ordinary use; it does not claim all Voice V1 gates complete.
+The owner heard a real 04 reply in desktop ChatGPT on 2026-11-04. After asking
+why a second confirmation was necessary, she explicitly chose this policy:
+ask for voice in chat → generate 04 → click play. Ordinary chat remains text.
+This supersedes the initial one-per-day, click-each-card trial policy.
 
-## What the owner does
+## Everyday use
 
-Ask for a short reply to be read aloud. The assistant keeps the text in chat
-and prepares the same exact text in a nonbillable confirmation card. Review it,
-click confirmation once, then click play. Playback in the loaded card may be
-repeated without another synthesis. The card does not promise audio retention
-after refresh or reopening. Each text is bounded by the existing 800 UTF-8-byte
-contract; do not silently truncate a longer reply or split it into paid calls.
+When the owner clearly asks to hear a short reply, keep that exact text in the
+chat and invoke `speak_shenshu_desktop_04`. Do not use it for ordinary chat or
+infer a request for speech from general affection. The server-only standing
+policy flag must be enabled before this tool is even registered.
 
-One generated segment per UTC day remains the fixed cap, resetting at 08:00
-Beijing time. Preparing a card alone does not consume paid quota. Same-day
-existing completed/unknown reservations continue to count; never clear or
-bypass them to make a second attempt. An expired unused card can be prepared
-again without synthesis. A used or uncertain card must never be regenerated.
+The card performs the existing component-only metadata and capacity checks,
+then automatically makes one authenticated app-side generation request. There
+is no second confirmation button for this requested-speech mode. Playback
+still requires the owner to press play; no autoplay is added. The old prepare
+preview remains nonbillable/manual and is not the normal on-request entry.
 
-## Cleanup
+Each explicit owner request gets one stable `requestKey` (8–128 allowed ASCII
+identifier characters). Keep it unchanged for that request's retries. The
+server derives owner-bound stable handle and operation ID, stores sealed exact
+text, and rejects changed text on the same key. Concurrent preparation or a
+process restart cannot create another operation for the same request. A used,
+expired or uncertain operation never regenerates on retry. A genuinely new
+owner request gets a new key; do not change keys to retry uncertain outcomes.
 
-- Dedicated `ui://shenshu/desktop-04-bubble-v1.html` resource, separate from the
-  diagnostic fixture. Debug controls, capability dumps and unused favorite are
-  hidden; light/dark text colors and the confirmation panel are readable.
-- Exact text, confirmation and play remain. Confirmation panel is hidden after
-  audio arrives; metadata/size preflight still runs before charging is enabled.
-- Expired proposals explicitly say expired and keep the card visible/disabled,
-  rather than reporting a generic invalid result. No RPC is sent for them.
-- Known expiry, used-card and quota denials have bounded, safe result codes.
-  Unknown provider/network outcomes still stop without retry or refund.
-- Host RPC silence has a 90-second timeout. Late replies are ignored; the
-  timeout never retries a provider operation.
+Ten segments per UTC day is the fixed cap for the standing on-request policy,
+resetting at 08:00 Beijing time. Existing daily reservations count. The D1
+schema already permits up to 20 slots, so no cloud migration is necessary;
+only the explicitly enabled desktop policy accepts 10. Default legacy stores
+retain their former maximum. The single-statement claim and consumed-grant
+trigger, fixed 04 voice/model and no-retry provider adapter remain unchanged.
 
-## One-time deployment setup
+Preparing the request itself does not consume paid quota, but presenting its
+card can start the authorized generation after preflight. This is why the
+speech-request tool is annotated as potentially billable and is used only for
+explicit requests. The assistant must not call the app-only confirmation tool
+directly. Audio returns only through component `_meta`, not model-visible
+fields or a public URL. No Kodo upload is added.
 
-Existing Render service: `srv-dbcgcsom7kps739tfpo0`, My Workspace
-`tea-dbb28o5g1s2s73e0bfb0`. Do not create a new service.
+Each text still has the existing 800 UTF-8-byte bound. Do not silently truncate
+a longer reply or split it into paid calls. Playback in the loaded card may be
+repeated without synthesis. Audio retention after refresh/reopening is not
+promised. Unknown provider outcomes stay used and do not refund the slot.
 
-The existing configured branch is an old P1 branch. The Render env-update MCP
-also deploys that configured branch automatically, even with autoDeploy OFF.
-Therefore first change the service branch to the reviewed release branch
-`deploy/desktop-04-v1`; keep automatic deployment OFF. The release branch must
-remain pinned to its reviewed code commit. Only after checking that service
-setting, merge the reviewed exact SHA plus desktop/paid enable flags into the
-existing environment. Preserve all existing secret values. This will deploy the
-correct branch with the new configuration. Verify live SHA, `desktop04_ready`
-and `desktop04_mounted:true`, then refresh ChatGPT MCP tools once.
+## Deployment and stop
 
-Normal use thereafter needs no Render toggles or redeploy per reply: only an
-explicit click in each card can synthesize, and the durable daily cap applies.
-Deployment/configuration readiness does not authorize the assistant to call
-confirmation itself. The owner clicks it in the card. No automatic synthesis,
-new provider calls or additional paid trial is part of this cleanup.
+Existing service: `srv-dbcgcsom7kps739tfpo0`, My Workspace
+`tea-dbb28o5g1s2s73e0bfb0`. Its reviewed branch is `deploy/desktop-04-v1`;
+autoDeploy stays OFF. Render env-update MCP automatically deploys the configured
+branch. Verify that branch and its reviewed SHA before any config update.
 
-Emergency stop: set desktop flag and all four paid flags to 0. The same env
-update may deploy the release branch but it will start with paid tools absent.
-Verify login reports paid disabled. Keep old completed/unknown D1 evidence.
+Keep the existing exact-SHA, OAuth, sealed D1, fixed voice and independent paid
+gates. Additionally enable `SHENSHU_DESKTOP_04_ON_REQUEST_ENABLED=1` only with
+the owner's standing authorization. It selects the 10-slot store and registers
+the requested-speech tool; omitting it preserves the old manual one-slot mode.
+Update the approved SHA with the reviewed release SHA before deployment.
+Verify live SHA, `desktop04_ready`, `desktop04_on_request_enabled:true` and
+`desktop04_daily_limit:10`, then refresh ChatGPT MCP tools once.
 
-## Validation and actual rollout state
+Normal use needs no Render toggle/redeploy per reply. To disable on-request
+speech, set its policy flag to 0. To stop all paid desktop generation, set the
+desktop flag and all four paid flags to 0 and verify paid tools absent. Preserve
+all completed/unknown D1 evidence. Never clear quota to make another attempt.
 
-Local Node 24: 477/477 pass, zero failures/skips; HTTP smoke passes. Coverage
-includes authenticated HTTP clean-resource delivery, expiry visibility, quota
-messaging, host timeout, late replies, no automatic retry, sealed admission,
-concurrent/replayed confirmations, and fake provider failures.
-Browser screenshot validation is not claimed: this runtime had no browser
-binary and the attempted headless browser download was invalid. Rendered
-light/dark appearance must be checked in the owner host after deployment.
-No local preview script is included in the deliverable.
+## Validation and remaining limits
 
-The previous one-trial shutdown deployment `dep-dbl1q7ajnfac73a8i3t0` was
-independently verified live and OAuth login reported paid disabled. This
-cleanup has not yet altered Render's branch or re-enabled paid generation.
+Local Node 24: 484/484 pass, zero failures/skips; HTTP smoke passes. New tests
+cover no-click generation only after both host probes, no generation on failed
+metadata, concurrent/stable request identity, factory recreation, changed-text
+rejection, exactly 10 admissions and denied 11th/12th, and no uncertain retries.
+Only synthetic local SQLite/JWT/WAV and fake provider transport were used.
+No additional real synthesis was made while implementing the requested mode.
+
+The previously accepted real audio playback path is retained. Rendered
+light/dark screenshots were not locally verified because the browser binary
+was unavailable and its download failed. The new requested-speech UX still
+needs its first owner-host check after deployment. This does not declare all
+nine Voice V1 gates complete or establish iPhone support/long-term replay.

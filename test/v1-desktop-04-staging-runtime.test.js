@@ -33,16 +33,17 @@ async function database(){
   db.exec(await readFile(new URL('../db/d1/'+name,import.meta.url),'utf8'));
  return {db,client:{query:async(sql,params=[])=>db.prepare(sql).all(...params)}};
 }
-async function harness({failure=false}={}){
+async function harness({failure=false,onRequest=false}={}){
  const {db,client}=await database();let calls=0,now=Date.now();
- const store=createD1P2ConfirmationOperationStore({client,maximumDailyCalls:1,textSealer:createPrivateTextSealer({masterKey})});
+ const store=createD1P2ConfirmationOperationStore({client,maximumDailyCalls:onRequest?10:1,desktopOnRequest:onRequest,textSealer:createPrivateTextSealer({masterKey})});
  await store.verifySchema();
- const factory=createDesktop04D1Factory({operationStore:store,clock:()=>now,operationTtlMs:1000,
+ const makeFactory=()=>createDesktop04D1Factory({operationStore:store,clock:()=>now,operationTtlMs:1000,onRequestEnabled:onRequest,maximumDailyCalls:onRequest?10:1,
  resolveVerifiedIdentity:async request=>({verified:true,subject:request.headers.authorization.endsWith('other')?other:owner}),
  synthesize:async()=>{calls++;if(failure)throw Error('upstream');return {audio};},
  });
+ const factory=makeFactory();
  const surface=who=>factory({verifiedRequest:{headers:{authorization:'Bearer '+('t'.repeat(30))+(who==='other'?'other':'owner')}}});
- return {db,store,surface,calls:()=>calls,advance:()=>{now+=2000;}};
+ return {db,store,client,factory,makeFactory,surface,calls:()=>calls,advance:()=>{now+=2000;}};
 }
 test('desktop defaults and each independent paid gate fail closed before cloud construction',()=>{
  assert.equal(assessDesktop04StagingConfig({}),'desktop04_flag_off');
@@ -146,4 +147,58 @@ test('disabled desktop composition does not construct a D1 client or provider re
  const {composeDesktop04StagingRuntime}=await import('../src/v1-desktop-04-staging-runtime.js');
  const result=await composeDesktop04StagingRuntime({env:{},createD1Client:()=>{throw Error('must not construct');},fetchImpl:()=>{throw Error('must not fetch');}});
  assert.equal(result.factory,null);assert.equal(result.code,'desktop04_flag_off');
+});
+
+test('on-request mode is absent by default and requires a stable per-request key',async()=>{
+ const h=await harness();try{assert.equal(h.surface().tools.some(t=>t.name==='speak_shenshu_desktop_04'),false);
+ await assert.rejects(h.surface().call('speak_shenshu_desktop_04',{text:'一句。',requestKey:'request_01'}));
+ assert.equal(h.calls(),0);
+ }finally{h.db.close();}
+});
+test('concurrent prepare retries and a recreated factory preserve one request identity and exact text',async()=>{
+ const h=await harness({onRequest:true});try{
+ const app=h.surface(),args={text:'糯糯，想说给你听。',requestKey:'explicit_request_01'};
+ const [a,b]=await Promise.all([app.call('speak_shenshu_desktop_04',args),app.call('speak_shenshu_desktop_04',args)]);
+ assert.equal(a.structuredContent.handle,b.structuredContent.handle);assert.equal(a.structuredContent.autoGenerate,true);
+ assert.equal(a.structuredContent.dailyLimit,10);assert.equal(h.calls(),0);
+ assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM paid_voice_confirmation_operations').get().n,1);
+ await assert.rejects(app.call('speak_shenshu_desktop_04',{...args,text:'改过的文字。'}));
+ const restarted=h.makeFactory()({verifiedRequest:{headers:{authorization:'Bearer '+('t'.repeat(30))+'owner'}}});
+ assert.equal((await restarted.call('speak_shenshu_desktop_04',args)).structuredContent.handle,a.structuredContent.handle);
+ await app.call(CONFIRM,{handle:a.structuredContent.handle});assert.equal(h.calls(),1);
+ const replay=await restarted.call('speak_shenshu_desktop_04',args);
+ assert.equal(replay.structuredContent.status,'not_generated');assert.equal(replay.structuredContent.reason,'used');assert.equal(h.calls(),1);
+ }finally{h.db.close();}
+});
+test('ten daily atomic admissions succeed and the eleventh is denied without another synthesis',async()=>{
+ const h=await harness({onRequest:true});try{const app=h.surface();
+ const pending=await Promise.all(Array.from({length:12},(_,i)=>app.call('speak_shenshu_desktop_04',{text:'语音 '+i,requestKey:'explicit_request_'+String(i).padStart(2,'0')})));
+ const results=await Promise.all(pending.map(p=>app.call(CONFIRM,{handle:p.structuredContent.handle})));
+ assert.equal(results.filter(r=>r.structuredContent.status==='audio_ready').length,10);
+ assert.equal(results.filter(r=>r.structuredContent.reason==='daily_limit').length,2);assert.equal(h.calls(),10);
+ assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM paid_voice_reservations').get().n,10);
+ assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM paid_voice_grants WHERE state=\'consumed\'').get().n,10);
+ }finally{h.db.close();}
+});
+test('uncertain requested speech stays used after process recreation and never retries the provider',async()=>{
+ const h=await harness({onRequest:true,failure:true});try{const args={text:'一句。',requestKey:'explicit_request_01'},app=h.surface();
+ const p=await app.call('speak_shenshu_desktop_04',args);await assert.rejects(app.call(CONFIRM,{handle:p.structuredContent.handle}));
+ const restarted=h.makeFactory()({verifiedRequest:{headers:{authorization:'Bearer '+('t'.repeat(30))+'owner'}}});
+ assert.equal((await restarted.call('speak_shenshu_desktop_04',args)).structuredContent.reason,'used');assert.equal(h.calls(),1);
+ }finally{h.db.close();}
+});
+test('normal gated composition supplies the request-mode tool and a ten-slot store only with its flag',async()=>{
+ const {composeDesktop04StagingRuntime}=await import('../src/v1-desktop-04-staging-runtime.js');
+ const {db,client}=await database();try{
+ const base={env:{...env(),SHENSHU_DESKTOP_04_ON_REQUEST_ENABLED:'1'},currentSha:sha,
+ composed:{sealedProposalEnabled:true,identityVerifier:async()=>({verified:true,subject:owner})},createD1Client:()=>client,
+ fetchImpl:async()=>{throw Error('no synthesis requested');}};
+ const result=await composeDesktop04StagingRuntime(base);
+ assert.equal(result.onRequestEnabled,true);assert.equal(result.maximumDailyCalls,10);
+ const app=result.factory({verifiedRequest:{headers:{authorization:'Bearer '+('t'.repeat(30))}}});
+ assert.equal(app.tools.length,4);assert.equal(app.tools[3].name,'speak_shenshu_desktop_04');
+ await app.call('speak_shenshu_desktop_04',{text:'请求。',requestKey:'explicit_request_01'});
+ assert.equal(db.prepare('SELECT max_daily_calls FROM paid_voice_confirmation_operations').get().max_daily_calls,10);
+ const off=await composeDesktop04StagingRuntime({...base,env:env()});assert.equal(off.factory({verifiedRequest:{headers:{authorization:'Bearer '+('t'.repeat(30))}}}).tools.length,3);
+ }finally{db.close();}
 });

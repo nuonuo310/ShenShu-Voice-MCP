@@ -176,7 +176,8 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
   // Dormant, server-injected only; no mere environment flag can mount a paid tool.
   if(desktop04Tools!==null){
     if(!privateFixtureEnabled||!desktop04Tools||
-      !Array.isArray(desktop04Tools.tools)||desktop04Tools.tools.length!==3||
+      !Array.isArray(desktop04Tools.tools)||![3,4].includes(desktop04Tools.tools.length)||
+      (desktop04Tools.tools.length===4&&desktop04Tools.tools[3]?.name!=="speak_shenshu_desktop_04")||
       typeof desktop04Tools.call!=="function"||
       desktop04Tools.tools[0]?.name!=="prepare_shenshu_desktop_04"||
       desktop04Tools.tools[1]?.name!=="confirm_shenshu_desktop_04"||
@@ -196,7 +197,9 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
   server.setRequestHandler(ReadResourceRequestSchema,async request=>{
     const desktop=desktop04Tools!==null&&request.params.uri===DESKTOP_04_UI_RESOURCE;
     if(!privateFixtureEnabled||(!desktop&&request.params.uri!==PRIVATE_FIXTURE_UI_URI))throw Error("unknown_resource");
-    return {contents:[{uri:request.params.uri,mimeType:RESOURCE_MIME_TYPE,text:desktop?desktop04Ui:oauthUiWithMarker,
+    const desktopUi=desktop04Tools?.tools.length===4?
+      desktop04Ui.replaceAll('每天最多 1 段','每天最多 10 条'):desktop04Ui;
+    return {contents:[{uri:request.params.uri,mimeType:RESOURCE_MIME_TYPE,text:desktop?desktopUi:oauthUiWithMarker,
       _meta:{ui:{prefersBorder:false,csp:{connectDomains:[],resourceDomains:["https://shenshu-voice-mcp.onrender.com"]}}}}]};
   });
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));

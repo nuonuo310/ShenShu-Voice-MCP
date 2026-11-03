@@ -272,11 +272,13 @@ export function createD1P2ConfirmationOperationStore({
   client,
   maximumDailyCalls = V1_OFFLINE_MAX_DAILY_CALLS,
   textSealer = null,
+  desktopOnRequest = false,
 } = {}) {
   if (!client || typeof client.query !== "function" ||
       !Number.isSafeInteger(maximumDailyCalls) ||
       maximumDailyCalls < 1 ||
-      maximumDailyCalls > V1_OFFLINE_MAX_DAILY_CALLS ||
+      typeof desktopOnRequest !== "boolean" ||
+      maximumDailyCalls > (desktopOnRequest ? 10 : V1_OFFLINE_MAX_DAILY_CALLS) ||
       (textSealer !== null &&
         (typeof textSealer?.seal !== "function" ||
          typeof textSealer?.open !== "function" ||

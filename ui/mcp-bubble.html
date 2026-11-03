@@ -66,7 +66,7 @@ body.desktop04{color-scheme:light dark;color:#594a3f}
   <section class="direct04" id="direct04-card" hidden aria-labelledby="direct04-title">
     <strong id="direct04-title">沈述 04 · 本人确认</strong>
     <p class="direct04-exact" id="direct04-exact"></p>
-    <p>确认后可能产生一次 MiniMax 费用。每份提案只能使用一次，失败不自动重试。</p>
+    <p id="direct04-policy">确认后可能产生一次 MiniMax 费用。每份提案只能使用一次，失败不自动重试。</p>
     <button id="direct04-confirm" type="button">确认生成这段 04 语音（可能计费）</button>
     <p id="direct04-status" class="status" role="status" aria-live="polite">尚未确认；没有生成费用。</p>
   </section>
@@ -340,6 +340,10 @@ async function toggleBridgePlayback(){
   }
 }
 function applyResponse(response){
+  if(response?.structuredContent?.status==="not_generated"){
+    $("status").textContent="这次语音请求已处理或过期，不重复生成。已有卡片中的音频可以继续播放。";
+    return;
+  }
   const next=response?.structuredContent?.record;
   if(!next)return;
   audio.pause();
@@ -415,11 +419,14 @@ function handleDesktop04Pending(response){
     $("status").textContent="04 语音准备结果无效，已停止。";
     return true;
   }
-  direct04Pending={handle:x.handle,expiresAt:x.expiresAt};
+  const autoGenerate=x.autoGenerate===true&&x.dailyLimit===10;
+  direct04Pending={handle:x.handle,expiresAt:x.expiresAt,autoGenerate};
   direct04TransportReady=false;
   const gate=++direct04GateSerial;
   $("direct04-exact").textContent=x.text;
   $("direct04-confirm").disabled=true;
+  $("direct04-confirm").hidden=autoGenerate;
+  if(autoGenerate&&$("direct04-policy"))$("direct04-policy").textContent="已按你的语音请求准备，检查通过后生成一次。每天最多 10 条，播放不重复计费。";
   $("direct04-status").textContent="正在检查官端私有数据通道（非计费）；尚未生成。";
   $("direct04-card").hidden=false;
   if(Date.parse(x.expiresAt)<=Date.now()){
@@ -473,6 +480,7 @@ function handleDesktop04Pending(response){
       $("direct04-status").textContent=bigOk?
         "私有数据大小与通道检查均通过（非计费）；可本人确认一次生成。":
         "官端无法可靠传递完整私有音频，已阻止收费生成。";
+      if(bigOk&&direct04Pending?.autoGenerate)void generateDesktop04();
     })
     .catch(()=>{
       if(gate!==direct04GateSerial||direct04Pending?.handle!==x.handle)return;
@@ -482,7 +490,7 @@ function handleDesktop04Pending(response){
     });
   return true;
 }
-$("direct04-confirm")?.addEventListener("click",async()=>{
+async function generateDesktop04(){
   if(!isOAuthBubble || !direct04Pending || !direct04TransportReady)return;
   const claim=direct04Pending;
   direct04TransportReady=false;
@@ -501,7 +509,7 @@ $("direct04-confirm")?.addEventListener("click",async()=>{
     const reason=response?.structuredContent?.reason;
     if(response?.structuredContent?.status==="not_generated"){
       $("direct04-status").textContent=reason==="daily_limit"?
-        "今天的 1 段额度已用完，北京时间 08:00 更新。已有音频可以重复播放。":
+        "今天的语音额度已用完，北京时间 08:00 更新。已有音频可以重复播放。":
         reason==="expired"?"这张确认卡已过期，尚未发起生成。让哥哥重新准备即可。":
         "这张确认卡已使用或失效，请勿重复生成。";
       return;
@@ -520,7 +528,8 @@ $("direct04-confirm")?.addEventListener("click",async()=>{
   }catch{
     $("direct04-status").textContent="本次结果无法确认，已停止；不会自动重试或重新计费。";
   }
-});
+}
+$("direct04-confirm")?.addEventListener("click",generateDesktop04);
 function notify(method,params){window.parent.postMessage({jsonrpc:"2.0",method,params},"*")}
 function request(method,params){return new Promise((resolve,reject)=>{
   const id=++rpcId;

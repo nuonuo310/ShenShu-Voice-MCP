@@ -84,6 +84,26 @@ test("no click can cause a paid confirmation while the nonbillable _meta probe i
   assert.equal(h.calls.length,1);
 });
 
+test("explicit requested-speech card generates once after both probes without a second click",async()=>{
+ const h=await harness();
+ h.handle({structuredContent:{...PENDING.structuredContent,autoGenerate:true,dailyLimit:10}});
+ assert.equal(h.nodes.get('direct04-confirm').hidden,true);
+ assert.equal(h.calls.filter(c=>c.params.name==='confirm_shenshu_desktop_04').length,0);
+ await h.completeProbe(hostReply());
+ assert.equal(h.calls.filter(c=>c.params.name==='confirm_shenshu_desktop_04').length,0);
+ await h.completeProbe(capacityReply());
+ assert.equal(h.calls.filter(c=>c.params.name==='confirm_shenshu_desktop_04').length,1);
+ await h.click();assert.equal(h.calls.filter(c=>c.params.name==='confirm_shenshu_desktop_04').length,1);
+});
+
+test("requested speech never generates if private metadata fails its gate",async()=>{
+ const h=await harness();
+ h.handle({structuredContent:{...PENDING.structuredContent,autoGenerate:true,dailyLimit:10}});
+ await h.completeProbe(hostReply(false));
+ assert.equal(h.nodes.get('direct04-confirm').disabled,true);
+ assert.equal(h.calls.filter(c=>c.params.name==='confirm_shenshu_desktop_04').length,0);
+});
+
 test("an expired card stays visible with a useful message and cannot call any probe or confirm",async()=>{
  const h=await harness();
  h.handle({structuredContent:{...PENDING.structuredContent,expiresAt:'2020-01-01T00:00:00Z'}});
