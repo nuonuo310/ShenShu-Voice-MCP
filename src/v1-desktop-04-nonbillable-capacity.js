@@ -1,7 +1,7 @@
 /** Fixed nonsecret capacity probe, no audio, no billing, no credentials. */
 export const V1_DESKTOP_04_CAPACITY_NAME="probe_shenshu_desktop_04_capacity";
 export const V1_DESKTOP_04_CAPACITY_LENGTH=2_800_000;
-const PATTERN="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+";
+const PATTERN="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const oauth=Object.freeze([{type:"oauth2",scopes:["voice:speak"]}]);
 
 export function desktop04CapacityDescriptor(){
