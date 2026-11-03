@@ -14,6 +14,9 @@ import {checkText} from "./contract.js";
 
 export const DESKTOP_04_PREPARE_TOOL="prepare_shenshu_desktop_04";
 export const DESKTOP_04_CONFIRM_TOOL="confirm_shenshu_desktop_04";
+export const DESKTOP_04_CAPACITY_TOOL="probe_shenshu_desktop_04_capacity";
+export const DESKTOP_04_CAPACITY_CHARS=2_800_000; // exceeds 2 MiB WAV as base64
+const NONSECRET_CAPACITY_PAYLOAD="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".repeat(43_750);
 export const DESKTOP_04_UI_RESOURCE="ui://shenshu/private-fixture-bubble-v2.html";
 
 const HANDLE=/^[A-Za-z0-9_-]{43}$/;
@@ -77,6 +80,14 @@ export function createDesktop04AppSurfaceOffline({
     securitySchemes:SCHEMES,
     annotations:{readOnlyHint:false,openWorldHint:false,destructiveHint:true},
     _meta:{securitySchemes:SCHEMES,ui:{visibility:["app"]}},
+  },{
+    name:DESKTOP_04_CAPACITY_TOOL,
+    title:"仅界面使用：检查官端大音频私有传输",
+    description:"非计费的约 2.8MB 固定非敏感文本传输测试；没有真正音频或供应商调用。",
+    inputSchema:{type:"object",properties:{},additionalProperties:false},
+    securitySchemes:SCHEMES,
+    annotations:{readOnlyHint:true,openWorldHint:false,destructiveHint:false},
+    _meta:{securitySchemes:SCHEMES,ui:{visibility:["app"]}},
   }]);
   return Object.freeze({
     tools,
@@ -98,6 +109,18 @@ export function createDesktop04AppSurfaceOffline({
             handle:proposed.handle,expiresAt:proposed.expiresAt,
             text,billable:false,
           },
+        };
+      }
+      if(name===DESKTOP_04_CAPACITY_TOOL){
+        if(!exactKeys(args,[]))throw new Error("invalid_arguments");
+        await principal();
+        return {
+          content:[{type:"text",text:"非计费大音频传输容量检查；仅固定非敏感数据。"}],
+          structuredContent:{capacity_probe:true,billable:false,provider_invoked:false},
+          _meta:{shenshuCapacityProbe:{
+            version:1,marker:"shenshu-capacity-nonsecret-v1",
+            length:DESKTOP_04_CAPACITY_CHARS,payload:NONSECRET_CAPACITY_PAYLOAD,
+          }},
         };
       }
       if(name===DESKTOP_04_CONFIRM_TOOL){
