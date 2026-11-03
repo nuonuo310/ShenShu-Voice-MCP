@@ -14,7 +14,7 @@ test("OAuth UI resource specializes bridge button without modifying public UI",a
  assert.ok(html.includes('id="bridge-probe"'));
  assert.ok(html.includes('request("tools/call"'));
  assert.ok(html.includes("官端小数据与大数据传输均通过"));
- assert.ok(html.includes("未到达（私有音频路径不可用）"));
+ assert.ok(html.includes("官端大数据传输未通过"));
  assert.ok(html.includes("widget-meta-fixed-nonsecret-v1"));
  const {readFile}=await import("node:fs/promises");
  const publicHtml=await readFile(new URL("../ui/mcp-bubble.html",import.meta.url),"utf8");
