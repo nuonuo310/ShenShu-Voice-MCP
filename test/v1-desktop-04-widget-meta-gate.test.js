@@ -135,3 +135,40 @@ test("forged marker or stale result never enables confirmation",async()=>{
   await Promise.resolve();
   assert.equal(k.nodes.get("direct04-confirm").disabled,true);
 });
+
+async function bridgeHarness(failAt){
+ const html=await readFile(new URL('../ui/mcp-bubble.html',import.meta.url),'utf8');
+ const a=html.indexOf('const bridgeProbe=$("bridge-probe");');
+ const b=html.indexOf('const bridgeAudioProbe=',a);
+ const calls=[]; let click;
+ const button={addEventListener:(_,fn)=>{click=fn;}};
+ const result={textContent:''};
+ runInNewContext(html.slice(a,b),{
+  isOAuthBubble:true,$:id=>id==='bridge-probe'?button:result,
+  request:async(_,params)=>{
+   calls.push(params.name);
+   if(params.name===failAt)throw {code:-32601,message:'SECRET_TOKEN',data:{token:'SECRET_TOKEN'}};
+   return params.name==='probe_oauth_ui_bridge'?hostReply():capacityReply();
+  },
+ });
+ await click();
+ return {calls,button,text:result.textContent};
+}
+test('bridge failure identifies small probe and never echoes host error secrets',async()=>{
+ const h=await bridgeHarness('probe_oauth_ui_bridge');
+ assert.match(h.text,/小数据调用失败（RPC -32601）/);
+ assert.doesNotMatch(h.text,/SECRET_TOKEN/);
+ assert.equal(h.calls.length,1);
+ assert.equal(h.button.disabled,false);
+});
+test('capacity RPC failure preserves evidence that small metadata passed',async()=>{
+ const h=await bridgeHarness('probe_shenshu_desktop_04_capacity');
+ assert.match(h.text,/大数据（小数据已通过）调用失败（RPC -32601）/);
+ assert.doesNotMatch(h.text,/SECRET_TOKEN/);
+ assert.deepEqual(h.calls,['probe_oauth_ui_bridge','probe_shenshu_desktop_04_capacity']);
+});
+test('successful standalone bridge still requires both nonbillable probes',async()=>{
+ const h=await bridgeHarness(null);
+ assert.match(h.text,/官端小数据与大数据传输均通过/);
+ assert.equal(h.calls.length,2);
+});

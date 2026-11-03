@@ -506,6 +506,7 @@ if(isOAuthBubble){bridgeProbe.hidden=false;}
 bridgeProbe.addEventListener("click",async()=>{
   if(!isOAuthBubble)return;
   bridgeProbe.disabled=true;
+  let probeStage="小数据";
   $("bridge-result").textContent="通信桥检测中…";
   try{
     const result=await request("tools/call",{name:"probe_oauth_ui_bridge",arguments:{}});
@@ -517,6 +518,7 @@ bridgeProbe.addEventListener("click",async()=>{
       $("bridge-result").textContent="官端私有数据通道未通过（非计费）；不允许收费生成。";
     }else{
       $("bridge-result").textContent="小数据已到达；正在检查最大音频容量（非计费）…";
+      probeStage="大数据（小数据已通过）";
       const capacity=await request("tools/call",{name:"probe_shenshu_desktop_04_capacity",arguments:{}});
       const cap=capacity?._meta?.shenshuCapacityProbe;
       const pattern="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -532,7 +534,11 @@ bridgeProbe.addEventListener("click",async()=>{
         "官端小数据与大数据传输均通过（非计费、无音频）。":
         "官端大数据传输未通过（非计费）；不允许收费生成。";
     }
-  }catch{$("bridge-result").textContent="OAuth 通信桥：调用失败";}
+  }catch(error){
+    // Do not echo host messages/data: they may contain credentials or private text.
+    const code=Number.isSafeInteger(error?.code)?String(error.code):"unavailable";
+    $("bridge-result").textContent="OAuth 通信桥："+probeStage+"调用失败（RPC "+code+"）；已停止，未调用 MiniMax。";
+  }
   finally{bridgeProbe.disabled=false;}
 });
 const bridgeAudioProbe=$("bridge-audio-probe");
