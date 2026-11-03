@@ -406,26 +406,47 @@ function handleDesktop04Pending(response){
   // Prove _meta survives this *same authenticated app-only call path*
   // BEFORE a paid confirmation can ever be enabled. No provider/D1 write.
   void request("tools/call",{name:"probe_oauth_ui_bridge",arguments:{}})
-    .then(result=>{
+    .then(async result=>{
       if(gate!==direct04GateSerial||direct04Pending?.handle!==x.handle)return;
       const info=result?.structuredContent;
       const marker=result?._meta?.shenshuWidgetProbe;
-      const ok=info?.bridge_verified===true &&
+      const smallOk=info?.bridge_verified===true &&
         info?.paid_voice_enabled===false &&
         info?.audio_returned===false &&
         marker?.version===1 &&
         marker?.marker==="widget-meta-fixed-nonsecret-v1";
-      direct04TransportReady=ok;
-      $("direct04-confirm").disabled=!ok;
-      $("direct04-status").textContent=ok?
-        "组件专用数据通道已验证（仅小数据）；可本人确认一次生成。":
-        "官端未可靠传递组件专用数据，已阻止收费生成。";
+      if(!smallOk){
+        direct04TransportReady=false;
+        $("direct04-confirm").disabled=true;
+        $("direct04-status").textContent="官端未可靠传递组件专用数据，已阻止收费生成。";
+        return;
+      }
+      $("direct04-status").textContent="小数据已通过，正在检查大音频传输容量（非计费）…";
+      const capacity=await request("tools/call",{
+        name:"probe_shenshu_desktop_04_capacity",arguments:{}
+      });
+      if(gate!==direct04GateSerial||direct04Pending?.handle!==x.handle)return;
+      const cap=capacity?._meta?.shenshuCapacityProbe;
+      const pattern="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      const bigOk=capacity?.structuredContent?.capacity_probe===true &&
+        capacity?.structuredContent?.billable===false &&
+        capacity?.structuredContent?.provider_invoked===false &&
+        cap?.version===1 && cap?.marker==="shenshu-capacity-nonsecret-v1" &&
+        cap?.length===2_800_000 && typeof cap?.payload==="string" &&
+        cap.payload.length===2_800_000 &&
+        cap.payload.slice(0,64)===pattern &&
+        cap.payload.slice(-64)===pattern;
+      direct04TransportReady=bigOk;
+      $("direct04-confirm").disabled=!bigOk;
+      $("direct04-status").textContent=bigOk?
+        "私有数据大小与通道检查均通过（非计费）；可本人确认一次生成。":
+        "官端无法可靠传递完整私有音频，已阻止收费生成。";
     })
     .catch(()=>{
       if(gate!==direct04GateSerial||direct04Pending?.handle!==x.handle)return;
       direct04TransportReady=false;
       $("direct04-confirm").disabled=true;
-      $("direct04-status").textContent="官端通道检测失败，已阻止收费生成。";
+      $("direct04-status").textContent="官端通道或容量检测失败，已阻止收费生成。";
     });
   return true;
 }
