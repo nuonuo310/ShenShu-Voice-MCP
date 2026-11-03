@@ -401,7 +401,7 @@ function handleDesktop04Pending(response){
   $("status").textContent="04 语音等待本人确认。";
   return true;
 }
-$("direct04-confirm").addEventListener("click",async()=>{
+$("direct04-confirm")?.addEventListener("click",async()=>{
   if(!isOAuthBubble || !direct04Pending)return;
   const claim=direct04Pending;
   direct04Pending=null; // click at most once, even on an ambiguous outcome
