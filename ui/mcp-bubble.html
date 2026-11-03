@@ -75,7 +75,7 @@ wave.innerHTML=heights.map(h=>`<i style="--h:${h}px"></i>`).join("");
 const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");
 let record=null,frame=0,rpcId=0,loadPhase="idle",mediaLoadGeneration=0;
 let bridgeAudio=null,bridgePlayback=null,bridgePlaybackToken=0;
-let direct04Pending=null;
+let direct04Pending=null,direct04TransportReady=false,direct04GateSerial=0;
 const pending=new Map();
 // Read-only, nonsecret runtime media capability report. Does not play audio or fetch URLs.
 let mediaCapabilityText="音频能力：检测不可用";
@@ -390,20 +390,50 @@ function handleDesktop04Pending(response){
      Date.parse(x.expiresAt)<=Date.now()){
     $("direct04-card").hidden=true;
     direct04Pending=null;
+    direct04TransportReady=false;
+    direct04GateSerial++;
     $("status").textContent="04 语音准备结果无效，已停止。";
     return true;
   }
   direct04Pending={handle:x.handle,expiresAt:x.expiresAt};
+  direct04TransportReady=false;
+  const gate=++direct04GateSerial;
   $("direct04-exact").textContent=x.text;
-  $("direct04-confirm").disabled=false;
-  $("direct04-status").textContent="文字已准备好；尚未生成、尚未扣费。";
+  $("direct04-confirm").disabled=true;
+  $("direct04-status").textContent="正在检查官端私有数据通道（非计费）；尚未生成。";
   $("direct04-card").hidden=false;
-  $("status").textContent="04 语音等待本人确认。";
+  $("status").textContent="04 语音准备成功；正在检查能否安全交付。";
+  // Prove _meta survives this *same authenticated app-only call path*
+  // BEFORE a paid confirmation can ever be enabled. No provider/D1 write.
+  void request("tools/call",{name:"probe_oauth_ui_bridge",arguments:{}})
+    .then(result=>{
+      if(gate!==direct04GateSerial||direct04Pending?.handle!==x.handle)return;
+      const info=result?.structuredContent;
+      const marker=result?._meta?.shenshuWidgetProbe;
+      const ok=info?.bridge_verified===true &&
+        info?.paid_voice_enabled===false &&
+        info?.audio_returned===false &&
+        marker?.version===1 &&
+        marker?.marker==="widget-meta-fixed-nonsecret-v1";
+      direct04TransportReady=ok;
+      $("direct04-confirm").disabled=!ok;
+      $("direct04-status").textContent=ok?
+        "组件专用数据通道已验证（仅小数据）；可本人确认一次生成。":
+        "官端未可靠传递组件专用数据，已阻止收费生成。";
+    })
+    .catch(()=>{
+      if(gate!==direct04GateSerial||direct04Pending?.handle!==x.handle)return;
+      direct04TransportReady=false;
+      $("direct04-confirm").disabled=true;
+      $("direct04-status").textContent="官端通道检测失败，已阻止收费生成。";
+    });
   return true;
 }
 $("direct04-confirm")?.addEventListener("click",async()=>{
-  if(!isOAuthBubble || !direct04Pending)return;
+  if(!isOAuthBubble || !direct04Pending || !direct04TransportReady)return;
   const claim=direct04Pending;
+  direct04TransportReady=false;
+  direct04GateSerial++;
   direct04Pending=null; // click at most once, even on an ambiguous outcome
   $("direct04-confirm").disabled=true;
   if(Date.parse(claim.expiresAt)<=Date.now()){
@@ -460,8 +490,8 @@ bridgeProbe.addEventListener("click",async()=>{
     const result=await request("tools/call",{name:"probe_oauth_ui_bridge",arguments:{}});
     const info=result?.structuredContent;
     const bridgeOk=info?.bridge_verified===true&&info?.paid_voice_enabled===false&&info?.audio_returned===false;
-    const widgetOnlyOk=response?._meta?.shenshuWidgetProbe?.version===1&&
-      response?._meta?.shenshuWidgetProbe?.marker==="widget-meta-fixed-nonsecret-v1";
+    const widgetOnlyOk=result?._meta?.shenshuWidgetProbe?.version===1&&
+      result?._meta?.shenshuWidgetProbe?.marker==="widget-meta-fixed-nonsecret-v1";
     $("bridge-result").textContent=bridgeOk?
       "OAuth 通信桥：成功（无音频、无计费） · 组件专用数据："+(widgetOnlyOk?"已到达（非音频）":"未到达（私有音频路径不可用）"):
       "OAuth 通信桥：返回结果不符合预期";
