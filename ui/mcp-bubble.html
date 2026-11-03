@@ -24,6 +24,11 @@ body{margin:0;padding:10px;background:transparent}
 .favorite svg{width:21px;height:21px;overflow:visible}.favorite path{fill:transparent;stroke:currentColor;stroke-width:2.4;stroke-linejoin:round}
 .status{min-height:16px;margin:8px 4px 0;font-size:11px;line-height:1.45;color:#bba893}
 .text{margin:8px 4px 0;font-size:12px;line-height:1.55;color:#d7c5b2}
+.direct04{padding:14px;margin-top:13px;border:1px solid rgba(218,187,149,.26);border-radius:16px;background:rgba(80,63,51,.23)}
+.direct04 p{font-size:12px;line-height:1.65;margin:5px 0 10px}
+.direct04 .direct04-exact{white-space:pre-wrap;overflow-wrap:anywhere;color:#f5e6d5}
+#direct04-confirm{font:inherit;font-size:13px;padding:11px 14px;border-radius:12px;background:#d7b58e;color:#2a1b12;border:0}
+#direct04-confirm:disabled{opacity:.52}
 @media(max-width:360px){.bubble{gap:8px;padding-inline:10px}.wave{gap:1px}}
 @media(prefers-reduced-motion:reduce){.wave i{transition:none}}
 </style>
@@ -41,6 +46,13 @@ body{margin:0;padding:10px;background:transparent}
   </div>
   <p class="text" id="text"></p>
   <p class="status" id="status">等待 MCP 工具结果…</p>
+  <section class="direct04" id="direct04-card" hidden aria-labelledby="direct04-title">
+    <strong id="direct04-title">沈述 04 · 本人确认</strong>
+    <p class="direct04-exact" id="direct04-exact"></p>
+    <p>确认后可能产生一次 MiniMax 费用。每份提案只能使用一次，失败不自动重试。</p>
+    <button id="direct04-confirm" type="button">确认生成这段 04 语音（可能计费）</button>
+    <p id="direct04-status" class="status" role="status" aria-live="polite">尚未确认；没有生成费用。</p>
+  </section>
   <p class="status" id="audio-output-diagnostic" aria-live="polite"></p>
   <p class="status" id="capability" aria-live="polite"></p>
   <button id="bridge-probe" type="button" hidden>检查 OAuth 通信桥</button>
@@ -63,6 +75,7 @@ wave.innerHTML=heights.map(h=>`<i style="--h:${h}px"></i>`).join("");
 const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");
 let record=null,frame=0,rpcId=0,loadPhase="idle",mediaLoadGeneration=0;
 let bridgeAudio=null,bridgePlayback=null,bridgePlaybackToken=0;
+let direct04Pending=null;
 const pending=new Map();
 // Read-only, nonsecret runtime media capability report. Does not play audio or fetch URLs.
 let mediaCapabilityText="音频能力：检测不可用";
@@ -366,6 +379,56 @@ function applyResponse(response){
   paint();
 }
 
+function handleDesktop04Pending(response){
+  const x=response?.structuredContent;
+  if(x?.desktop04Pending!==true)return false;
+  // Only the OAuth private MCP card can display a possible paid confirmation.
+  if(!isOAuthBubble || x.status!=="pending_confirmation" || x.billable!==false ||
+     typeof x.text!=="string" || x.text.length===0 || x.text.length>800 ||
+     typeof x.handle!=="string" || !/^[A-Za-z0-9_-]{43}$/.test(x.handle) ||
+     typeof x.expiresAt!=="string" || !Number.isFinite(Date.parse(x.expiresAt)) ||
+     Date.parse(x.expiresAt)<=Date.now()){
+    $("direct04-card").hidden=true;
+    direct04Pending=null;
+    $("status").textContent="04 语音准备结果无效，已停止。";
+    return true;
+  }
+  direct04Pending={handle:x.handle,expiresAt:x.expiresAt};
+  $("direct04-exact").textContent=x.text;
+  $("direct04-confirm").disabled=false;
+  $("direct04-status").textContent="文字已准备好；尚未生成、尚未扣费。";
+  $("direct04-card").hidden=false;
+  $("status").textContent="04 语音等待本人确认。";
+  return true;
+}
+$("direct04-confirm").addEventListener("click",async()=>{
+  if(!isOAuthBubble || !direct04Pending)return;
+  const claim=direct04Pending;
+  direct04Pending=null; // click at most once, even on an ambiguous outcome
+  $("direct04-confirm").disabled=true;
+  if(Date.parse(claim.expiresAt)<=Date.now()){
+    $("direct04-status").textContent="提案已过期，未发起生成。";
+    return;
+  }
+  $("direct04-status").textContent="已提交一次确认；正在等待返回（请勿重试）。";
+  try {
+    const response=await request("tools/call",{
+      name:"confirm_shenshu_desktop_04",arguments:{handle:claim.handle}
+    });
+    // The generated WAV is deliberately widget-only. No content or
+    // structuredContent fallback; if host drops _meta, fail closed.
+    const next=response?._meta?.shenshuPrivateAudio?.record;
+    if(response?.structuredContent?.status!=="audio_ready" ||
+       response?.structuredContent?.record!==undefined || !next){
+      throw Error("private_audio_missing");
+    }
+    validateGeneratedBridgeRecord(next);
+    applyResponse({structuredContent:{record:next}});
+    $("direct04-status").textContent="04 音频已返回界面；请点击上方播放并确认实际有声。";
+  }catch{
+    $("direct04-status").textContent="本次结果无法确认，已停止；不会自动重试或重新计费。";
+  }
+});
 function notify(method,params){window.parent.postMessage({jsonrpc:"2.0",method,params},"*")}
 function request(method,params){return new Promise((resolve,reject)=>{const id=++rpcId;pending.set(id,{resolve,reject});window.parent.postMessage({jsonrpc:"2.0",id,method,params},"*")})}
 window.addEventListener("message",event=>{
@@ -375,7 +438,9 @@ window.addEventListener("message",event=>{
     const p=pending.get(msg.id);if(!p)return;pending.delete(msg.id);
     msg.error?p.reject(msg.error):p.resolve(msg.result);return;
   }
-  if(msg.method==="ui/notifications/tool-result")applyResponse(msg.params);
+  if(msg.method==="ui/notifications/tool-result"){
+    if(!handleDesktop04Pending(msg.params))applyResponse(msg.params);
+  }
 },{passive:true});
 (async()=>{
   try{
