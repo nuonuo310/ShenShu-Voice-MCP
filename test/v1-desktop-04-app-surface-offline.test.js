@@ -6,7 +6,8 @@ import {makeInlineToneFixture} from "../src/inline-fixture.js";
 import {createDesktopDirect04Offline} from "../src/v1-desktop-direct-04-offline.js";
 import {
  createDesktop04AppSurfaceOffline,DESKTOP_04_CONFIRM_TOOL,
- DESKTOP_04_PREPARE_TOOL,DESKTOP_04_UI_RESOURCE,
+ DESKTOP_04_PREPARE_TOOL,DESKTOP_04_CAPACITY_TOOL,DESKTOP_04_CAPACITY_CHARS,
+ DESKTOP_04_UI_RESOURCE,
 } from "../src/v1-desktop-04-app-surface-offline.js";
 
 const principal="P".repeat(43);
@@ -82,7 +83,28 @@ test("the only model-visible entry is nonbillable prepare; confirmation is app-o
  assert.equal(confirm.name,DESKTOP_04_CONFIRM_TOOL);
  assert.deepEqual(confirm._meta.ui.visibility,["app"]);
  assert.equal(confirm.annotations.destructiveHint,true);
+ assert.equal(t.surface.tools[2].name,DESKTOP_04_CAPACITY_TOOL);
+ assert.deepEqual(t.surface.tools[2]._meta.ui.visibility,["app"]);
  assert.deepEqual(prepare.securitySchemes,[{type:"oauth2",scopes:["voice:speak"]}]);
+});
+
+test("full-size capacity probe is nonbillable and sends its fixed payload only in widget metadata",async()=>{
+ const t=makeWorld();
+ const r=await t.surface.call(DESKTOP_04_CAPACITY_TOOL,{});
+ assert.deepEqual(t.calls,["verify"]);
+ assert.deepEqual(r.structuredContent,{
+   capacity_probe:true,billable:false,provider_invoked:false,
+ });
+ const p=r._meta.shenshuCapacityProbe;
+ assert.equal(p.version,1);
+ assert.equal(p.marker,"shenshu-capacity-nonsecret-v1");
+ assert.equal(p.length,DESKTOP_04_CAPACITY_CHARS);
+ assert.equal(p.payload.length,DESKTOP_04_CAPACITY_CHARS);
+ assert.equal(p.payload.slice(0,64),"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/");
+ assert.equal(p.payload.slice(-64),"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/");
+ assert.equal(JSON.stringify({content:r.content,structuredContent:r.structuredContent}).includes("shenshuCapacityProbe"),false);
+ await assert.rejects(t.surface.call(DESKTOP_04_CAPACITY_TOOL,{paid:true}),/invalid_arguments/);
+ assert.deepEqual(t.calls,["verify"]);
 });
 
 test("prepare creates only a pending text card; clicking app-only confirm returns private metadata and exact WAV",async()=>{
