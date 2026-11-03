@@ -18,6 +18,7 @@ import { createD1AdmissionDryRun } from "./d1-admission-dry-run.js";
 import { preparePrivateFixtureAudio } from "./private-fixture-delivery.js";
 import { makeInlineToneFixture } from "./inline-fixture.js";
 import {desktop04CapacityDescriptor,desktop04CapacityResult,V1_DESKTOP_04_CAPACITY_NAME} from "./v1-desktop-04-nonbillable-capacity.js";
+import {DESKTOP_04_UI_RESOURCE} from "./v1-desktop-04-app-surface-offline.js";
 import {
   makeNonbillableGeneratedHostToolResult,
   PROPOSED_GENERATED_HOST_TOOL_NAME
@@ -33,6 +34,25 @@ if(oauthBridgeUi===privateFixtureUi)throw Error("oauth_bridge_ui_specialization_
 const OAUTH_UI_BUILD_MARKER="v6-host-smoke-20261021";
 const oauthUiWithMarker=oauthBridgeUi.replace("</body>",'<p id="oauth-ui-build" style="font-size:11px;opacity:.55">UI '+OAUTH_UI_BUILD_MARKER+'</p></body>');
 if(oauthUiWithMarker===oauthBridgeUi)throw Error("oauth_ui_marker_injection_failed");
+// Dedicated resource prevents a cached diagnostic card from becoming the daily UI.
+const desktop04Ui=oauthBridgeUi
+  .replace('const isDesktop04Bubble=false;','const isDesktop04Bubble=true;')
+  .replace('沈述 04 · 本人确认','听哥哥说话 · 04')
+  .replace('确认后可能产生一次 MiniMax 费用。每份提案只能使用一次，失败不自动重试。',
+    '确认后生成一次语音并计费。每天最多 1 段，北京时间 08:00 更新额度。重复播放不会重新计费。')
+  .replace('确认生成这段 04 语音（可能计费）','确认生成这一段（计费）')
+  .replace('等待 MCP 工具结果…','正在准备语音…')
+  .replaceAll('04 语音准备成功；正在检查能否安全交付。','正在准备确认卡，尚未生成语音。')
+  .replaceAll('正在检查官端私有数据通道（非计费）；尚未生成。','正在检查，尚未生成语音…')
+  .replaceAll('小数据已通过，正在检查大音频传输容量（非计费）…','正在完成播放准备…')
+  .replaceAll('私有数据大小与通道检查均通过（非计费）；可本人确认一次生成。','准备好了。确认后生成一次，随后点上方播放。')
+  .replaceAll('沈述 04 已授权生成结果送达；请点击播放并确认是否出声。','04 已准备好。当前页面可重复播放，刷新后可能失效。')
+  .replaceAll('已提交一次确认；正在等待返回（请勿重试）。','正在生成这一段，请稍等，不用重复点击。')
+  .replaceAll('04 音频已返回界面；请点击上方播放并确认实际有声。','04 已准备好，点上方播放即可。')
+  .replaceAll('正在解码已授权 04 音频…','正在准备播放…')
+  .replaceAll('04 音频源已启动，请确认电脑是否真正听到声音。','播放中。')
+  .replaceAll('04 音频播放结束（是否真正听见仍以本人确认为准）。','播放结束，可以再听一遍。');
+if(desktop04Ui===oauthBridgeUi)throw Error("desktop04_ui_specialization_missing");
 
 export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=null}={}) {
   if(env?.SHENSHU_AUTH_MCP_ENABLED!=="1") return null;
@@ -169,12 +189,14 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     }
     tools.push(...desktop04Tools.tools);
   }
-  server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[{
-    uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE
-  }]:[]}));
+  server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[
+    {uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE},
+    ...(desktop04Tools?[{uri:DESKTOP_04_UI_RESOURCE,name:"沈述 04 语音",mimeType:RESOURCE_MIME_TYPE}]:[])
+  ]:[]}));
   server.setRequestHandler(ReadResourceRequestSchema,async request=>{
-    if(!privateFixtureEnabled||request.params.uri!==PRIVATE_FIXTURE_UI_URI)throw Error("unknown_resource");
-    return {contents:[{uri:PRIVATE_FIXTURE_UI_URI,mimeType:RESOURCE_MIME_TYPE,text:oauthUiWithMarker,
+    const desktop=desktop04Tools!==null&&request.params.uri===DESKTOP_04_UI_RESOURCE;
+    if(!privateFixtureEnabled||(!desktop&&request.params.uri!==PRIVATE_FIXTURE_UI_URI))throw Error("unknown_resource");
+    return {contents:[{uri:request.params.uri,mimeType:RESOURCE_MIME_TYPE,text:desktop?desktop04Ui:oauthUiWithMarker,
       _meta:{ui:{prefersBorder:false,csp:{connectDomains:[],resourceDomains:["https://shenshu-voice-mcp.onrender.com"]}}}}]};
   });
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));

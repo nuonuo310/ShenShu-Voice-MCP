@@ -29,7 +29,7 @@ function hostReply(meta=true){
     ...(meta?{_meta:{shenshuWidgetProbe:MARKER}}:{}),
   };
 }
-async function harness(){
+async function harness({confirmationReply}={}){
   const html=await readFile(new URL("../ui/mcp-bubble.html",import.meta.url),"utf8");
   const a=html.indexOf("function handleDesktop04Pending(");
   const b=html.indexOf("function notify(",a);
@@ -54,7 +54,7 @@ async function harness(){
       if(params.name==="probe_oauth_ui_bridge"||params.name==="probe_shenshu_desktop_04_capacity")
         return new Promise(resolve=>deferred.push(resolve));
       if(params.name==="confirm_shenshu_desktop_04")
-        return {structuredContent:{status:"audio_ready"},
+        return confirmationReply??{structuredContent:{status:"audio_ready"},
           _meta:{shenshuPrivateAudio:{record:{source:"minimax",generated:true}}}};
       throw Error("unexpected RPC "+params.name);
     },
@@ -82,6 +82,25 @@ test("no click can cause a paid confirmation while the nonbillable _meta probe i
   assert.equal(h.calls[0].params.name,"probe_oauth_ui_bridge");
   await h.click();
   assert.equal(h.calls.length,1);
+});
+
+test("an expired card stays visible with a useful message and cannot call any probe or confirm",async()=>{
+ const h=await harness();
+ h.handle({structuredContent:{...PENDING.structuredContent,expiresAt:'2020-01-01T00:00:00Z'}});
+ assert.equal(h.nodes.get('direct04-card').hidden,false);
+ assert.equal(h.nodes.get('direct04-confirm').disabled,true);
+ assert.match(h.nodes.get('status').textContent,/已过期/);
+ assert.match(h.nodes.get('direct04-status').textContent,/不用刷新/);
+ await h.click();assert.equal(h.calls.length,0);
+});
+
+test("quota denial is explained without re-enabling confirmation or retrying",async()=>{
+ const h=await harness({confirmationReply:{structuredContent:{status:'not_generated',reason:'daily_limit',retryable:false}}});
+ h.handle(PENDING);await h.completeProbe(hostReply());await h.completeProbe(capacityReply());
+ await h.click();
+ assert.match(h.nodes.get('direct04-status').textContent,/额度已用完/);
+ assert.equal(h.nodes.get('direct04-confirm').disabled,true);
+ await h.click();assert.equal(h.calls.filter(c=>c.params.name==='confirm_shenshu_desktop_04').length,1);
 });
 
 test("a host that drops widget-only _meta MUST keep paid confirmation disabled",async()=>{

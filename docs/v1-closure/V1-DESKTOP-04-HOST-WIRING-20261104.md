@@ -20,7 +20,8 @@ is retained as history. It does not declare all nine Voice V1 gates complete.
 - No additional synthesis or paid retry was invoked by the assistant. The
   desktop flag and all four paid flags were saved back to 0 after acceptance;
   Render triggered closure deployment `dep-dbl1q7ajnfac73a8i3t0` against its
-  configured old P1 branch. Activation of that closure must be verified.
+  configured old P1 branch. It was independently verified live; OAuth login
+  then returned `paid_voice_enabled:false`.
 
 Remaining: ordinary ongoing reply workflow, repeatable UX and removal of debug
 controls; iPhone host playback; long-term replay/persistence and the other V1

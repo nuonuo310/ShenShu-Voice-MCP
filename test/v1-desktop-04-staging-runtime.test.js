@@ -60,11 +60,11 @@ test('sealed prepare is nonbillable; concurrent confirmation and replay synthesi
  const row=h.db.prepare('SELECT text,sealed_text,max_daily_calls FROM paid_voice_confirmation_operations').get();
  assert.notEqual(row.text,'糯糯，哥哥在。');assert.ok(row.sealed_text);assert.equal(row.max_daily_calls,1);
  const answers=await Promise.allSettled([app.call(CONFIRM,{handle:p.structuredContent.handle}),app.call(CONFIRM,{handle:p.structuredContent.handle})]);
- assert.equal(answers.filter(r=>r.status==='fulfilled').length,1);assert.equal(h.calls(),1);
- const result=answers.find(r=>r.status==='fulfilled').value;
+ assert.equal(answers.filter(r=>r.status==='fulfilled'&&r.value.structuredContent.status==='audio_ready').length,1);assert.equal(h.calls(),1);
+ const result=answers.find(r=>r.status==='fulfilled'&&r.value.structuredContent.status==='audio_ready').value;
  assert.ok(result._meta.shenshuPrivateAudio.record.audioBase64);
  assert.ok(!JSON.stringify({content:result.content,structuredContent:result.structuredContent}).includes('audioBase64'));
- await assert.rejects(app.call(CONFIRM,{handle:p.structuredContent.handle}));assert.equal(h.calls(),1);
+ assert.equal((await app.call(CONFIRM,{handle:p.structuredContent.handle})).structuredContent.reason,'used');assert.equal(h.calls(),1);
  assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM paid_voice_grants WHERE state=\'consumed\'').get().n,1);
  }finally{h.db.close();}
 });
@@ -72,20 +72,20 @@ test('wrong owner, changed arguments and expired proposal never invoke provider'
  const h=await harness();try{const app=h.surface(),p=await app.call(PREPARE,{text:'短句。'});const handle=p.structuredContent.handle;
  await assert.rejects(h.surface('other').call(CONFIRM,{handle}));
  await assert.rejects(app.call(CONFIRM,{handle,text:'篡改'}));h.advance();
- await assert.rejects(app.call(CONFIRM,{handle}));assert.equal(h.calls(),0);
+ assert.equal((await app.call(CONFIRM,{handle})).structuredContent.reason,'expired');assert.equal(h.calls(),0);
  }finally{h.db.close();}
 });
 test('provider uncertainty is durable and cannot be retried even through a newly created surface',async()=>{
  const h=await harness({failure:true});try{const app=h.surface(),p=await app.call(PREPARE,{text:'短句。'});
  await assert.rejects(app.call(CONFIRM,{handle:p.structuredContent.handle}));
  assert.equal(h.db.prepare('SELECT state FROM paid_voice_confirmation_operations').get().state,'unknown');
- await assert.rejects(h.surface().call(CONFIRM,{handle:p.structuredContent.handle}));assert.equal(h.calls(),1);
+ assert.equal((await h.surface().call(CONFIRM,{handle:p.structuredContent.handle})).structuredContent.reason,'used');assert.equal(h.calls(),1);
  }finally{h.db.close();}
 });
 test('second proposal hits shared daily quota without a second provider attempt',async()=>{
  const h=await harness();try{const app=h.surface();
  const a=await app.call(PREPARE,{text:'一句。'}),b=await app.call(PREPARE,{text:'两句。'});
- await app.call(CONFIRM,{handle:a.structuredContent.handle});await assert.rejects(app.call(CONFIRM,{handle:b.structuredContent.handle}));
+ await app.call(CONFIRM,{handle:a.structuredContent.handle});assert.equal((await app.call(CONFIRM,{handle:b.structuredContent.handle})).structuredContent.reason,'daily_limit');
  assert.equal(h.calls(),1);
  }finally{h.db.close();}
 });
@@ -110,6 +110,14 @@ test('normal server HTTP mounts desktop tools only behind exact gates, uses real
  try{
  const list=await rpc('tools/list');assert.ok(list.body.result.tools.some(t=>t.name===PREPARE));
  assert.deepEqual(list.body.result.tools.find(t=>t.name===CONFIRM)._meta.ui.visibility,['app']);
+ const uri=list.body.result.tools.find(t=>t.name===PREPARE)._meta.ui.resourceUri;
+ assert.equal(uri,'ui://shenshu/desktop-04-bubble-v1.html');
+ const resource=await rpc('resources/read',{uri});
+ const html=resource.body.result.contents[0].text;
+ assert.ok(html.includes('const isDesktop04Bubble=true;'));
+ assert.ok(html.includes('每天最多 1 段'));
+ assert.ok(html.includes('播放结束，可以再听一遍。'));
+ assert.ok(!html.includes('<p id="oauth-ui-build"'));
  assert.equal((await rpc('tools/list',{},'bad')).status,401);
  const p=await rpc('tools/call',{name:PREPARE,arguments:{text:'电脑官端测试。'}});assert.equal(calls,0);
  const handle=p.body.result.structuredContent.handle;

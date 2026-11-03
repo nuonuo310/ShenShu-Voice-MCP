@@ -29,6 +29,23 @@ body{margin:0;padding:10px;background:transparent}
 .direct04 .direct04-exact{white-space:pre-wrap;overflow-wrap:anywhere;color:#f5e6d5}
 #direct04-confirm{font:inherit;font-size:13px;padding:11px 14px;border-radius:12px;background:#d7b58e;color:#2a1b12;border:0}
 #direct04-confirm:disabled{opacity:.52}
+body.desktop04{color-scheme:light dark;color:#594a3f}
+.desktop04 .shell{width:min(100%,460px)}
+.desktop04 .sender{color:#816c5b;letter-spacing:.1em}
+.desktop04 .text{color:#594a3f;font-size:13px}
+.desktop04 .status{color:#756455;font-size:12px;line-height:1.6}
+.desktop04 .direct04{background:#faf6f1;border:1px solid #e7ddd2;color:#594a3f}
+.desktop04 .direct04 .direct04-exact{color:#493a30;font-size:14px}
+.desktop04 #direct04-confirm{cursor:pointer;background:#85684f;color:#fffaf4}
+.desktop04 #direct04-confirm:disabled{cursor:default}
+.desktop04 #diagnostics,.desktop04 #oauth-ui-build,.desktop04 .favorite{display:none!important}
+@media(prefers-color-scheme:dark){
+ body.desktop04{color:#ecded0}
+ .desktop04 .text,.desktop04 .sender{color:#e1cdb8}
+ .desktop04 .status{color:#c4b19e}
+ .desktop04 .direct04{background:#342d28;border-color:#605044;color:#ecded0}
+ .desktop04 .direct04 .direct04-exact{color:#f6e8d9}
+}
 @media(max-width:360px){.bubble{gap:8px;padding-inline:10px}.wave{gap:1px}}
 @media(prefers-reduced-motion:reduce){.wave i{transition:none}}
 </style>
@@ -53,6 +70,7 @@ body{margin:0;padding:10px;background:transparent}
     <button id="direct04-confirm" type="button">确认生成这段 04 语音（可能计费）</button>
     <p id="direct04-status" class="status" role="status" aria-live="polite">尚未确认；没有生成费用。</p>
   </section>
+  <div id="diagnostics">
   <p class="status" id="audio-output-diagnostic" aria-live="polite"></p>
   <p class="status" id="capability" aria-live="polite"></p>
   <button id="bridge-probe" type="button" hidden>检查 OAuth 通信桥</button>
@@ -65,6 +83,7 @@ body{margin:0;padding:10px;background:transparent}
   <p class="status" id="bridge-play-result" aria-live="polite"></p>
   <button id="bridge-generated-probe" type="button" hidden>NONBILLABLE TEST · 生成形状 WAV</button>
   <p class="status" id="bridge-generated-result" aria-live="polite"></p>
+  </div>
 </div>
 <audio id="audio" preload="metadata" playsinline></audio>
 <script type="module">
@@ -73,6 +92,8 @@ const $=id=>document.getElementById(id);
 const wave=$("wave"),audio=$("audio"),play=$("play");
 wave.innerHTML=heights.map(h=>`<i style="--h:${h}px"></i>`).join("");
 const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");
+const isDesktop04Bubble=false;
+if(isDesktop04Bubble)document.body.classList.add("desktop04");
 let record=null,frame=0,rpcId=0,loadPhase="idle",mediaLoadGeneration=0;
 let bridgeAudio=null,bridgePlayback=null,bridgePlaybackToken=0;
 let direct04Pending=null,direct04TransportReady=false,direct04GateSerial=0;
@@ -386,8 +407,7 @@ function handleDesktop04Pending(response){
   if(!isOAuthBubble || x.status!=="pending_confirmation" || x.billable!==false ||
      typeof x.text!=="string" || x.text.length===0 || x.text.length>800 ||
      typeof x.handle!=="string" || !/^[A-Za-z0-9_-]{43}$/.test(x.handle) ||
-     typeof x.expiresAt!=="string" || !Number.isFinite(Date.parse(x.expiresAt)) ||
-     Date.parse(x.expiresAt)<=Date.now()){
+     typeof x.expiresAt!=="string" || !Number.isFinite(Date.parse(x.expiresAt))){
     $("direct04-card").hidden=true;
     direct04Pending=null;
     direct04TransportReady=false;
@@ -402,6 +422,12 @@ function handleDesktop04Pending(response){
   $("direct04-confirm").disabled=true;
   $("direct04-status").textContent="正在检查官端私有数据通道（非计费）；尚未生成。";
   $("direct04-card").hidden=false;
+  if(Date.parse(x.expiresAt)<=Date.now()){
+    direct04Pending=null;
+    $("status").textContent="这张确认卡已过期，尚未发起生成。";
+    $("direct04-status").textContent="让哥哥重新准备一张即可，不用刷新工具。";
+    return true;
+  }
   $("status").textContent="04 语音准备成功；正在检查能否安全交付。";
   // Prove _meta survives this *same authenticated app-only call path*
   // BEFORE a paid confirmation can ever be enabled. No provider/D1 write.
@@ -437,6 +463,12 @@ function handleDesktop04Pending(response){
         cap.payload.slice(0,64)===pattern &&
         cap.payload.slice(-64)===pattern;
       direct04TransportReady=bigOk;
+      if(Date.parse(x.expiresAt)<=Date.now()){
+        direct04TransportReady=false;
+        $("direct04-confirm").disabled=true;
+        $("direct04-status").textContent="这张确认卡已过期，尚未发起生成。让哥哥重新准备即可。";
+        return;
+      }
       $("direct04-confirm").disabled=!bigOk;
       $("direct04-status").textContent=bigOk?
         "私有数据大小与通道检查均通过（非计费）；可本人确认一次生成。":
@@ -466,6 +498,14 @@ $("direct04-confirm")?.addEventListener("click",async()=>{
     const response=await request("tools/call",{
       name:"confirm_shenshu_desktop_04",arguments:{handle:claim.handle}
     });
+    const reason=response?.structuredContent?.reason;
+    if(response?.structuredContent?.status==="not_generated"){
+      $("direct04-status").textContent=reason==="daily_limit"?
+        "今天的 1 段额度已用完，北京时间 08:00 更新。已有音频可以重复播放。":
+        reason==="expired"?"这张确认卡已过期，尚未发起生成。让哥哥重新准备即可。":
+        "这张确认卡已使用或失效，请勿重复生成。";
+      return;
+    }
     // The generated WAV is deliberately widget-only. No content or
     // structuredContent fallback; if host drops _meta, fail closed.
     const next=response?._meta?.shenshuPrivateAudio?.record;
@@ -475,18 +515,25 @@ $("direct04-confirm")?.addEventListener("click",async()=>{
     }
     validateGeneratedBridgeRecord(next);
     applyResponse({structuredContent:{record:next}});
+    if(typeof isDesktop04Bubble!=="undefined"&&isDesktop04Bubble)$("direct04-card").hidden=true;
     $("direct04-status").textContent="04 音频已返回界面；请点击上方播放并确认实际有声。";
   }catch{
     $("direct04-status").textContent="本次结果无法确认，已停止；不会自动重试或重新计费。";
   }
 });
 function notify(method,params){window.parent.postMessage({jsonrpc:"2.0",method,params},"*")}
-function request(method,params){return new Promise((resolve,reject)=>{const id=++rpcId;pending.set(id,{resolve,reject});window.parent.postMessage({jsonrpc:"2.0",id,method,params},"*")})}
+function request(method,params){return new Promise((resolve,reject)=>{
+  const id=++rpcId;
+  // Bound host silence; a timeout never automatically retries a paid operation.
+  const timer=setTimeout(()=>{pending.delete(id);reject({code:-32001});},90_000);
+  pending.set(id,{resolve,reject,timer});
+  window.parent.postMessage({jsonrpc:"2.0",id,method,params},"*");
+})}
 window.addEventListener("message",event=>{
   if(event.source!==window.parent)return;
   const msg=event.data;if(!msg||msg.jsonrpc!=="2.0")return;
   if(typeof msg.id==="number"){
-    const p=pending.get(msg.id);if(!p)return;pending.delete(msg.id);
+    const p=pending.get(msg.id);if(!p)return;pending.delete(msg.id);clearTimeout(p.timer);
     msg.error?p.reject(msg.error):p.resolve(msg.result);return;
   }
   if(msg.method==="ui/notifications/tool-result"){

@@ -18,7 +18,7 @@ export const DESKTOP_04_CONFIRM_TOOL="confirm_shenshu_desktop_04";
 export const DESKTOP_04_CAPACITY_TOOL="probe_shenshu_desktop_04_capacity";
 export const DESKTOP_04_CAPACITY_CHARS=2_800_000; // exceeds 2 MiB WAV as base64
 const NONSECRET_CAPACITY_PAYLOAD="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".repeat(43_750);
-export const DESKTOP_04_UI_RESOURCE="ui://shenshu/private-fixture-bubble-v2.html";
+export const DESKTOP_04_UI_RESOURCE="ui://shenshu/desktop-04-bubble-v1.html";
 
 const HANDLE=/^[A-Za-z0-9_-]{43}$/;
 const PRINCIPAL=/^[A-Za-z0-9_-]{43}$/;
@@ -126,6 +126,7 @@ export function createDesktop04AppSurfaceOffline({
       }
       if(name===DESKTOP_04_CONFIRM_TOOL){
         if(!exactKeys(args,["handle"])||!HANDLE.test(args.handle))throw new Error("invalid_arguments");
+        try {
         const p=await principal();
         const pending=await loadOwnedPending({trustedRequest,principal:p,handle:args.handle});
         const text=validatePending(pending,p,args.handle,clock());
@@ -138,6 +139,12 @@ export function createDesktop04AppSurfaceOffline({
           throw new Error("private_audio_unavailable");
         }
         return result;
+        }catch(error){
+          const reason={desktop04_daily_limit:"daily_limit",desktop04_expired:"expired",desktop04_used:"used"}[error?.message];
+          if(!reason)throw error;
+          return {content:[{type:"text",text:"本次未发起新的语音生成；请查看卡片提示。"}],
+            structuredContent:{status:"not_generated",reason,retryable:false}};
+        }
       }
       throw new Error("unknown_tool");
     }

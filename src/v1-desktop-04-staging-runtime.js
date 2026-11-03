@@ -51,7 +51,9 @@ export function createDesktop04D1Factory({operationStore,resolveVerifiedIdentity
   if(id.principal!==principal)throw Error('not_authorized');
   const row=await operationStore.get({principal,handle});
   if(!row||row.principal!==principal||row.handle!==handle||
-     !row.operationId.startsWith(PREFIX)||row.state!=='pending_confirmation'||row.expiresAt<=nowMs(clock))throw Error('confirmation_unavailable');
+     !row.operationId.startsWith(PREFIX))throw Error('confirmation_unavailable');
+  if(row.state!=='pending_confirmation')throw Error('desktop04_used');
+  if(row.expiresAt<=nowMs(clock))throw Error('desktop04_expired');
   return row;
  }
  return ({verifiedRequest})=>createDesktop04AppSurfaceOffline({
@@ -71,7 +73,7 @@ export function createDesktop04D1Factory({operationStore,resolveVerifiedIdentity
      if(input.principal!==principal||input.handle!==handle||input.requestId!==row.operationId||
         input.textDigest!==row.textDigest||input.textBytes!==row.textBytes)throw Error('not_authorized');
      const claim=await operationStore.claim({...input,now:nowMs(clock)});
-     if(claim?.claimed!==true)throw Error('admission_denied');
+     if(claim?.claimed!==true)throw Error(claim?.reason==='quota'?'desktop04_daily_limit':'desktop04_used');
      claimed=true;
      if(claim.operationId!==row.operationId||claim.requestId!==row.operationId)throw Error('admission_invalid');
      const attested=await operationStore.attestAdmission({principal,operationId:row.operationId});
@@ -84,9 +86,10 @@ export function createDesktop04D1Factory({operationStore,resolveVerifiedIdentity
     const completed=await operationStore.markCompleted({principal,handle,operationId:row.operationId,now:nowMs(clock)});
     if(completed?.updated!==true)throw Error('completion_unknown');
     return result;
-   }catch{
+   }catch(error){
     // A claimed/ambiguous attempt is never refunded, regenerated or replayed.
     if(claimed)try{await operationStore.markUnknown({principal,handle,operationId:row.operationId,now:nowMs(clock)});}catch{}
+    if(!claimed&&['desktop04_daily_limit','desktop04_used'].includes(error?.message))throw error;
     throw Error('desktop04_outcome_unavailable');
    }
   },
