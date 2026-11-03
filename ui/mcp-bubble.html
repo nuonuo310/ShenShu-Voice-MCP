@@ -459,7 +459,12 @@ bridgeProbe.addEventListener("click",async()=>{
   try{
     const result=await request("tools/call",{name:"probe_oauth_ui_bridge",arguments:{}});
     const info=result?.structuredContent;
-    $("bridge-result").textContent=info?.bridge_verified===true&&info?.paid_voice_enabled===false&&info?.audio_returned===false?"OAuth 通信桥：成功（无音频、无计费）":"OAuth 通信桥：返回结果不符合预期";
+    const bridgeOk=info?.bridge_verified===true&&info?.paid_voice_enabled===false&&info?.audio_returned===false;
+    const widgetOnlyOk=response?._meta?.shenshuWidgetProbe?.version===1&&
+      response?._meta?.shenshuWidgetProbe?.marker==="widget-meta-fixed-nonsecret-v1";
+    $("bridge-result").textContent=bridgeOk?
+      "OAuth 通信桥：成功（无音频、无计费） · 组件专用数据："+(widgetOnlyOk?"已到达（非音频）":"未到达（私有音频路径不可用）"):
+      "OAuth 通信桥：返回结果不符合预期";
   }catch{$("bridge-result").textContent="OAuth 通信桥：调用失败";}
   finally{bridgeProbe.disabled=false;}
 });
