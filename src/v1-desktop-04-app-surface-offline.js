@@ -1,5 +1,6 @@
 /**
- * Dormant desktop 04 ChatGPT MCP Apps tool pair (no actual paid tool mounted).
+ * Desktop 04 ChatGPT MCP Apps surface. This dependency-injected module has
+ * no live dependencies; only the fully gated staging runtime may mount it.
  *
  * Model can request a NONBILLABLE, authenticated preparation card.
  * Only that card's app calls the app-visible confirmation tool. In the real

@@ -1,8 +1,8 @@
 /**
- * DESKTOP DIRECT 04 — offline, deliberately UNMOUNTED composition slice.
+ * DESKTOP DIRECT 04 — dependency-injected composition slice.
  *
  * Trust boundary: the UI/model MUST NOT call this function directly.
- * A future owner-confirmed APP-ONLY tool handler must inject a verified
+ * The gated owner-confirmed APP-ONLY tool handler must inject a verified
  * principal and a durable atomic one-use grant consumer; this module refuses
  * caller-controlled authorization and returns a bounded private inline WAV
  * record to the EXISTING ChatGPT host Web Audio bubble.
@@ -69,8 +69,8 @@ export function createDesktopDirect04Offline({
         if(providerText!==safeText||
            voiceId!==DESKTOP_04_VOICE_ID||
            modelId!==DESKTOP_04_MODEL_ID)throw new Error("model_mismatch");
-        // Exactly one injected attempt; a real MiniMax adapter is NOT
-        // supplied or called by this dormant offline component.
+        // Exactly one injected attempt; the gated staging runtime supplies
+        // the fixed MiniMax adapter. Tests supply only synthetic audio.
         const audio=await synthesize({
           text:safeText,modelId:DESKTOP_04_MODEL_ID,voiceId:DESKTOP_04_VOICE_ID
         });

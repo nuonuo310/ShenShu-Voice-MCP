@@ -192,8 +192,8 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     )) throw new Error("invalid_arguments");
     if(request.params.name==="verify_shenshu_login") {
       return {
-        content:[{type:"text",text:"身份已验证。沈述付费语音尚未开放。"}],
-        structuredContent:{authenticated:true,paid_voice_enabled:false}
+        content:[{type:"text",text:desktop04Tools ? "身份已验证。04 语音仅在卡片内确认后生成。" : "身份已验证。沈述付费语音尚未开放。"}],
+        structuredContent:{authenticated:true,paid_voice_enabled:desktop04Tools!==null}
       };
     }
     if(request.params.name==="verify_shenshu_d1_admission" && typeof admissionDryRun==="function") {
@@ -299,7 +299,8 @@ export async function handleStagingAuthenticatedMcp(req,res,{
   }
   // Do not build this in production unless the trusted server composition
   // explicitly injects the factory AND staging's dedicated flag is on.
-  // Current runtime never injects it: default is always null.
+  // The normal runtime injects it only after desktop staging configuration,
+  // exact deployment identity and sealed D1 schema checks. Default is null.
   let desktop04Tools=null;
   if(desktop04Factory!==null &&
      env.SHENSHU_DESKTOP_04_APP_ENABLED==="1" &&

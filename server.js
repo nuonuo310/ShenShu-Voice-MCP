@@ -18,6 +18,7 @@ import { createD1AdmissionDryRun } from "./src/d1-admission-dry-run.js";
 import { resolveProtectedResourceIdentity } from "./src/protected-resource-identity.js";
 import { createCloudflareD1Http } from "./src/cloudflare-d1-http.js";
 import { composeV1P2StagingRuntime } from "./src/v1-p2-staging-runtime.js";
+import { composeDesktop04StagingRuntime, DESKTOP_04_FLAG } from "./src/v1-desktop-04-staging-runtime.js";
 import {
   CONTROLLED_STAGING_APPROVED_SHA_ENV,
   assessV1P2ControlledStagingConfig,
@@ -190,6 +191,7 @@ export function createShenShuHttpServer({
   kodoProbe = null,
   protectedResourceJwksCache = undefined,
   protectedResourceIdentityVerifier = null,
+  desktop04Factory = null,
 } = {}) {
   if (nonbillableClosure !== null &&
       (!nonbillableClosure ||
@@ -260,6 +262,7 @@ export function createShenShuHttpServer({
     proposalBroker: activeClosure?.broker ?? null,
     jwksCache: protectedResourceJwksCache,
     identityVerifier: protectedResourceIdentityVerifier,
+    desktop04Factory,
   })) return;
 
   if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
@@ -346,7 +349,13 @@ export async function createShenShuRuntimeServer({
     createD1Client: createComposedD1Client,
   });
   const expectedSha = env?.[CONTROLLED_STAGING_APPROVED_SHA_ENV];
-  const paidCandidate = await createV1P2ControlledStagingCandidate({
+  const desktop04 = await composeDesktop04StagingRuntime({
+    env, composed, createD1Client: createComposedD1Client, currentSha, fetchImpl,
+    ...(clock === undefined ? {} : { clock }),
+    ...(operationTtlMs === undefined ? {} : { operationTtlMs }),
+  });
+  // Desktop mode never falls through into the separate Kodo/player paid path.
+  const paidCandidate = env?.[DESKTOP_04_FLAG] === "1" ? null : await createV1P2ControlledStagingCandidate({
     env,
     expectedSha,
     currentSha,
@@ -384,6 +393,7 @@ export async function createShenShuRuntimeServer({
     paidConfirmation: paidCandidate,
     protectedResourceJwksCache: composed.jwksCache,
     protectedResourceIdentityVerifier: composed.identityVerifier,
+    desktop04Factory: desktop04.factory,
   });
   return Object.freeze({
     server,
@@ -392,6 +402,8 @@ export async function createShenShuRuntimeServer({
     staticTestJwks: composed.staticTestJwks === true,
     paidConfirmMounted: paidCandidate !== null,
     paidStartupCode,
+    desktop04Mounted: desktop04.factory !== null,
+    desktop04StartupCode: desktop04.code,
     kodoProbeMounted: kodoProbe !== null,
   });
 }
@@ -422,7 +434,7 @@ if (process.env.NODE_ENV !== "test") {
       dry_run_flag_enabled: dryRunEnabled,
       d1_config_accepted: dryRunRegistered,
       d1_tool_registered: env.SHENSHU_AUTH_MCP_ENABLED === "1" && dryRunRegistered,
-      paid_voice_enabled: runtime.paidConfirmMounted === true
+      paid_voice_enabled: runtime.paidConfirmMounted === true || runtime.desktop04Mounted === true
     }));
     console.log("shenshu_staging_sealed_startup " + JSON.stringify({
       sealed_proposal_enabled: runtime.sealedProposalEnabled,
@@ -430,7 +442,9 @@ if (process.env.NODE_ENV !== "test") {
       static_test_jwks: runtime.staticTestJwks,
       paid_confirm_mounted: runtime.paidConfirmMounted === true,
       paid_startup_code: runtime.paidStartupCode,
-      paid_voice_enabled: runtime.paidConfirmMounted === true,
+      desktop04_mounted: runtime.desktop04Mounted === true,
+      desktop04_startup_code: runtime.desktop04StartupCode ?? "startup_exception",
+      paid_voice_enabled: runtime.paidConfirmMounted === true || runtime.desktop04Mounted === true,
       kodo_probe_mounted: runtime.kodoProbeMounted === true
     }));
   });

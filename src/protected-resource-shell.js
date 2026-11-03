@@ -34,6 +34,7 @@ export async function handleProtectedResourceShell(req, res, pathname, {
   proposalBroker = null,
   jwksCache = runtimeJwksCache,
   identityVerifier = null,
+  desktop04Factory = null,
 } = {}) {
   const isMetadataRoute=pathname === RESOURCE_METADATA_PATH;
   const isPaidRoute=pathname === PAID_PATH;
@@ -72,7 +73,8 @@ export async function handleProtectedResourceShell(req, res, pathname, {
         resourceMetadataUrl:identity.resourceMetadataUrl,
         jwksCache:env.SHENSHU_AUTH_PUBLIC_JWKS_JSON ? null : jwksCache,
         identityVerifier,
-        proposalBroker:identity.staging ? proposalBroker : null
+        proposalBroker:identity.staging ? proposalBroker : null,
+        desktop04Factory:identity.staging ? desktop04Factory : null
       });
       return true;
     }
