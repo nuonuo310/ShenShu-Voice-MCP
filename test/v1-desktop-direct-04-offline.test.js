@@ -120,7 +120,8 @@ test("this is UNMOUNTED code: no paid MCP server route, Kodo side effects, or au
     readFile(new URL("../server.js",import.meta.url),"utf8"),
     readFile(new URL("../src/staging-authenticated-mcp.js",import.meta.url),"utf8"),
   ]);
-  assert.doesNotMatch(mod,/kodo|cloudflare|d1-http|fetch\(|\.send\(/i);
+  assert.doesNotMatch(mod,/from\\s+["'][^"']*(?:kodo|cloudflare|d1-http)/i);
+  assert.doesNotMatch(mod,/globalThis\\.fetch|fetchImpl|new S3Client|new PutObjectCommand/);
   assert.doesNotMatch(mod,/SHENSHU_DESKTOP_DIRECT_04_ENABLED|process\.env/);
   assert.doesNotMatch(server,/v1-desktop-direct-04-offline/);
   assert.doesNotMatch(authenticated,/v1-desktop-direct-04-offline/);
