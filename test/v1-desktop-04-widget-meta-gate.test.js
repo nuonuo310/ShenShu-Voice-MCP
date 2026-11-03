@@ -64,8 +64,7 @@ async function harness(){
   async function completeProbe(reply){
     assert.equal(deferred.length,1);
     deferred.shift()(reply);
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise(done=>setTimeout(done,0));
   }
   return {
     nodes,calls,deferred,
