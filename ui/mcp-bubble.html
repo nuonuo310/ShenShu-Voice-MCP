@@ -267,7 +267,7 @@ async function toggleBridgePlayback(){
     updateAudioOutputDiagnostic({resume:"pending",context:contextState(context)});
     bridgePlayback={token,generation,context,source:null,starting:true,playing:false};
     play.disabled=true;
-    $("status").textContent=record?.hostDeliveryTest===true?"正在解码非计费测试WAV（未调用 MiniMax）…":"正在解码宿主桥交付的音频…";
+    $("status").textContent=record?.hostDeliveryTest===true?"正在解码非计费测试WAV（未调用 MiniMax）…":record?.desktopDirect04===true?"正在解码已授权 04 音频…":"正在解码宿主桥交付的音频…";
     await unlocked;
     updateAudioOutputDiagnostic({resume:"resolved",context:contextState(context)});
     if(token!==bridgePlaybackToken||generation!==mediaLoadGeneration||bridgeAudio!==bridge)
@@ -297,14 +297,14 @@ async function toggleBridgePlayback(){
       try{source.disconnect()}catch{}
       try{const closed=context.close();if(closed?.catch)closed.catch(()=>{})}catch{}
       play.disabled=false;
-      $("status").textContent=record?.hostDeliveryTest===true?"非计费测试WAV 播放结束（未调用 MiniMax）。":"音频播放结束（非计费；真实设备播放仍待人工验证）。";
+      $("status").textContent=record?.hostDeliveryTest===true?"非计费测试WAV 播放结束（未调用 MiniMax）。":record?.desktopDirect04===true?"04 音频播放结束（是否真正听见仍以本人确认为准）。":"音频播放结束（非计费；真实设备播放仍待人工验证）。";
       paint();
     };
     updateAudioOutputDiagnostic({source:"starting",context:contextState(context)});
     source.start();
     updateAudioOutputDiagnostic({source:"started",context:contextState(context)});
     play.disabled=false;
-    $("status").textContent=record?.hostDeliveryTest===true?"非计费测试WAV 的 Web Audio 源已启动；请确认设备是否出声（未调用 MiniMax）。":"音频的 Web Audio 源已启动；请确认设备是否出声（非计费）。";
+    $("status").textContent=record?.hostDeliveryTest===true?"非计费测试WAV 的 Web Audio 源已启动；请确认设备是否出声（未调用 MiniMax）。":record?.desktopDirect04===true?"04 音频源已启动，请确认电脑是否真正听到声音。":"音频的 Web Audio 源已启动；请确认设备是否出声（非计费）。";
     paint();
   }catch(error){
     if(token!==bridgePlaybackToken)return;
@@ -338,7 +338,7 @@ function applyResponse(response){
       record=next;
       bridgeAudio={generation,bytes:bridge.bytes,durationSeconds:bridge.durationSeconds};
       loadPhase="generated-bridge-ready";
-      $("status").textContent=next.hostDeliveryTest===true?"非计费测试生成 WAV 已由宿主桥交付；请点击播放（Web Audio，未调用 MiniMax）。":"生成音频已由宿主桥交付；请点击播放（Web Audio，非计费）。";
+      $("status").textContent=next.hostDeliveryTest===true?"非计费测试生成 WAV 已由宿主桥交付；请点击播放（Web Audio，未调用 MiniMax）。":next.desktopDirect04===true?"沈述 04 已授权生成结果送达；请点击播放并确认是否出声。":"生成形状音频已由宿主桥交付；请点击播放（Web Audio，非计费）。";
       play.disabled=false;
       paint();
       return;
