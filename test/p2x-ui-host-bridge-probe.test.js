@@ -20,3 +20,18 @@ test("OAuth UI resource specializes bridge button without modifying public UI",a
  const publicHtml=await readFile(new URL("../ui/mcp-bubble.html",import.meta.url),"utf8");
  assert.ok(!publicHtml.includes('const isOAuthBubble=true;'));
 }));
+
+test("app-only nonbillable capacity probe is available without the paid desktop factory",async()=>check(true,async c=>{
+ const tool=(await c.listTools()).tools.find(t=>t.name==="probe_shenshu_desktop_04_capacity");
+ assert.ok(tool);
+ assert.deepEqual(tool._meta.ui.visibility,["app"]);
+ const r=await c.callTool({name:tool.name,arguments:{}});
+ assert.deepEqual(r.structuredContent,{capacity_probe:true,billable:false,provider_invoked:false});
+ const cap=r._meta?.shenshuCapacityProbe;
+ assert.equal(cap?.marker,"shenshu-capacity-nonsecret-v1");
+ assert.equal(cap?.length,2800000);
+ assert.equal(cap?.payload?.length,2800000);
+ assert.equal(cap.payload.slice(0,64),"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/");
+ assert.equal(cap.payload.slice(-64),"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/");
+ assert.equal(JSON.stringify({content:r.content,structuredContent:r.structuredContent}).includes("shenshuCapacityProbe"),false);
+}));
