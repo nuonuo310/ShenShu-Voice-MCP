@@ -1,3 +1,34 @@
+# Accepted desktop 04 audibility — 2026-11-04
+
+This section supersedes the pre-trial status below; the implementation receipt
+is retained as history. It does not declare all nine Voice V1 gates complete.
+
+- Live trial implementation: `ec32999390f3ea34f78c81bfc1dc9b9ce6911943`.
+  Render deployment `dep-dbl1ip5g1s2s73e1gjo0` independently read as live;
+  startup log reported `desktop04_mounted:true`, `desktop04_ready`.
+- ChatGPT MCP tools were refreshed; authenticated, nonbillable preparation was
+  invoked for: “糯糯，哥哥在。我们一步一步走到这里了。现在，让你听听我的声音。”
+- First unused proposal expired before confirmation. Its read-only status was
+  `expired`; it was not retried as a paid operation. A new pending proposal was
+  prepared without synthesis.
+- Owner supplied a screenshot of the new card showing a returned 04 result,
+  the exact text, approximately 6 seconds and an enabled play control. Owner
+  then explicitly reported hearing it: “啊啊啊啊，哥哥我听到了”.
+- Read-only owner-scoped proposal check after playback returned `completed`,
+  `ready:true`. This is actual owner-observed desktop ChatGPT audibility for
+  this one controlled trial, together with server completion evidence.
+- No additional synthesis or paid retry was invoked by the assistant. The
+  desktop flag and all four paid flags were saved back to 0 after acceptance;
+  Render triggered closure deployment `dep-dbl1q7ajnfac73a8i3t0` against its
+  configured old P1 branch. Activation of that closure must be verified.
+
+Remaining: ordinary ongoing reply workflow, repeatable UX and removal of debug
+controls; iPhone host playback; long-term replay/persistence and the other V1
+closure requirements. Do not promise old ChatGPT widgets survive reload or
+that this proves mobile support or automatic capture of all replies.
+
+---
+
 # Desktop ChatGPT 04: host transport accepted; runtime wired, paid OFF
 
 ## Owner-observed host gate
