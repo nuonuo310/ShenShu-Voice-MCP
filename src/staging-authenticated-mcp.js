@@ -17,6 +17,7 @@ import { createAuth0JwksCache } from "./auth0-jwks-cache.js";
 import { createD1AdmissionDryRun } from "./d1-admission-dry-run.js";
 import { preparePrivateFixtureAudio } from "./private-fixture-delivery.js";
 import { makeInlineToneFixture } from "./inline-fixture.js";
+import {desktop04CapacityDescriptor,desktop04CapacityResult,V1_DESKTOP_04_CAPACITY_NAME} from "./v1-desktop-04-nonbillable-capacity.js";
 import {
   makeNonbillableGeneratedHostToolResult,
   PROPOSED_GENERATED_HOST_TOOL_NAME
@@ -142,6 +143,10 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     inputSchema:{type:"object",properties:{},additionalProperties:false},
     securitySchemes:oauth,_meta:{securitySchemes:oauth,ui:{visibility:["app"]}}
   });
+  // Fully nonbillable app-only capacity check exists independently of the
+  // dormant paid desktop04 factory. Only the authenticated private fixture
+  // staging surface can expose it; no environment credential or D1 required.
+  if(privateFixtureEnabled && desktop04Tools===null)tools.push(desktop04CapacityDescriptor());
   if(proposalTools!==null) {
     if(!proposalTools || !Array.isArray(proposalTools.tools) ||
        typeof proposalTools.call!=="function" ||
@@ -207,6 +212,9 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
     }
     if(request.params.name===PROPOSED_GENERATED_HOST_TOOL_NAME && privateFixtureEnabled) {
       return makeNonbillableGeneratedHostToolResult();
+    }
+    if(request.params.name===V1_DESKTOP_04_CAPACITY_NAME && privateFixtureEnabled && desktop04Tools===null) {
+      return desktop04CapacityResult();
     }
     if(request.params.name==="probe_oauth_ui_bridge" && privateFixtureEnabled) {
       return {content:[{type:"text",text:"OAuth UI bridge probe OK; no audio or paid tools invoked."}],
