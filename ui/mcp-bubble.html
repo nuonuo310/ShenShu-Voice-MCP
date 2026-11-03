@@ -513,9 +513,25 @@ bridgeProbe.addEventListener("click",async()=>{
     const bridgeOk=info?.bridge_verified===true&&info?.paid_voice_enabled===false&&info?.audio_returned===false;
     const widgetOnlyOk=result?._meta?.shenshuWidgetProbe?.version===1&&
       result?._meta?.shenshuWidgetProbe?.marker==="widget-meta-fixed-nonsecret-v1";
-    $("bridge-result").textContent=bridgeOk?
-      "OAuth 通信桥：成功（无音频、无计费） · 组件专用数据："+(widgetOnlyOk?"已到达（非音频）":"未到达（私有音频路径不可用）"):
-      "OAuth 通信桥：返回结果不符合预期";
+    if(!bridgeOk || !widgetOnlyOk){
+      $("bridge-result").textContent="官端私有数据通道未通过（非计费）；不允许收费生成。";
+    }else{
+      $("bridge-result").textContent="小数据已到达；正在检查最大音频容量（非计费）…";
+      const capacity=await request("tools/call",{name:"probe_shenshu_desktop_04_capacity",arguments:{}});
+      const cap=capacity?._meta?.shenshuCapacityProbe;
+      const pattern="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      const pass=capacity?.structuredContent?.capacity_probe===true &&
+        capacity?.structuredContent?.billable===false &&
+        capacity?.structuredContent?.provider_invoked===false &&
+        cap?.version===1 && cap?.marker==="shenshu-capacity-nonsecret-v1" &&
+        cap?.length===2_800_000 && typeof cap?.payload==="string" &&
+        cap.payload.length===2_800_000 &&
+        cap.payload.slice(0,64)===pattern &&
+        cap.payload.slice(-64)===pattern;
+      $("bridge-result").textContent=pass?
+        "官端小数据与大数据传输均通过（非计费、无音频）。":
+        "官端大数据传输未通过（非计费）；不允许收费生成。";
+    }
   }catch{$("bridge-result").textContent="OAuth 通信桥：调用失败";}
   finally{bridgeProbe.disabled=false;}
 });
