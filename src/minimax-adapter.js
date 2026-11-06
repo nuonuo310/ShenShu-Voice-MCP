@@ -3,6 +3,10 @@ import { checkText, MAX_WAV_BYTES, validateWav } from "./contract.js";
 export const MINIMAX_ENDPOINT = "https://api.minimaxi.com/v1/t2a_v2";
 export const DEFAULT_MODEL_ID = "speech-2.8-hd";
 export const UPSTREAM_TIMEOUT_MS = 60_000;
+export const VOICE_PRESETS = Object.freeze({
+  natural: Object.freeze({ speed: 1, vol: 1, pitch: 0 }),
+  gentle: Object.freeze({ speed: 0.93, vol: 0.95, pitch: -1 }),
+});
 
 function configured(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -59,19 +63,24 @@ function canonicalizeNonseekableWav(audio) {
   return audio;
 }
 
-export function buildMiniMaxRequest({ text, voiceId, modelId = DEFAULT_MODEL_ID }) {
+export function buildMiniMaxRequest({
+  text,
+  voiceId,
+  modelId = DEFAULT_MODEL_ID,
+  voicePreset = "natural",
+}) {
   const safeText = checkText(text);
   if (!configured(voiceId)) throw new Error("not_configured");
   if (!configured(modelId)) throw new Error("not_configured");
+  const voiceSettings = VOICE_PRESETS[voicePreset];
+  if (!voiceSettings) throw new Error("invalid_voice_preset");
   return Object.freeze({
     model: modelId.trim(),
     text: safeText,
     stream: false,
     voice_setting: Object.freeze({
       voice_id: voiceId.trim(),
-      speed: 1.0,
-      vol: 1,
-      pitch: 0,
+      ...voiceSettings,
     }),
     audio_setting: Object.freeze({
       sample_rate: 16000,
@@ -91,11 +100,12 @@ export async function synthesizeMiniMax({
   apiKey,
   voiceId,
   modelId = DEFAULT_MODEL_ID,
+  voicePreset = "natural",
   fetchImpl = fetch,
   timeoutMs = UPSTREAM_TIMEOUT_MS,
 }) {
   if (!configured(apiKey) || !configured(voiceId)) throw new Error("not_configured");
-  const body = buildMiniMaxRequest({ text, voiceId, modelId });
+  const body = buildMiniMaxRequest({ text, voiceId, modelId, voicePreset });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
