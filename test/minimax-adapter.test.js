@@ -18,6 +18,26 @@ test("MiniMax request fixes model/voice settings and output format",()=>{
   assert.equal(body.stream,false);
 });
 
+test("gentle preset softens only delivery settings and keeps the selected voice",()=>{
+  const body=buildMiniMaxRequest({
+    text:"嗯，我也想你。",voiceId:"voice-test",voicePreset:"gentle"
+  });
+  assert.deepEqual(body.voice_setting,{
+    voice_id:"voice-test",speed:0.93,vol:0.95,pitch:-1
+  });
+  assert.equal(body.model,"speech-2.8-hd");
+  assert.equal(body.text,"嗯，我也想你。");
+});
+
+test("unknown voice preset fails before a provider request",async()=>{
+  let calls=0;
+  await assert.rejects(()=>synthesizeMiniMax({
+    text:"糯糯",apiKey:"secret",voiceId:"voice-test",voicePreset:"unknown",
+    fetchImpl:async()=>{calls++;}
+  }),/invalid_voice_preset/);
+  assert.equal(calls,0);
+});
+
 test("synthesizer makes exactly one upstream call and validates WAV",async()=>{
   const audio=wav(1);let calls=0,seen;
   const fetchImpl=async(url,options)=>{
