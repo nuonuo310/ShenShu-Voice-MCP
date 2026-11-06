@@ -141,7 +141,10 @@ export async function composeDesktop04StagingRuntime({env,composed,createD1Clien
   if(schema?.ok!==true||schema.sealedText!==true)throw Error('schema_unqualified');
   const synthesize=async({text,modelId,voiceId})=>{
    if(modelId!==DESKTOP_04_MODEL_ID||voiceId!==DESKTOP_04_VOICE_ID)throw Error('provider_config_mismatch');
-   return synthesizeMiniMax({text,modelId,voiceId,apiKey:env.SHENSHU_MINIMAX_API_KEY,fetchImpl});
+   return synthesizeMiniMax({
+    text,modelId,voiceId,voicePreset:'gentle',
+    apiKey:env.SHENSHU_MINIMAX_API_KEY,fetchImpl
+   });
   };
   const factory=createDesktop04D1Factory({operationStore,resolveVerifiedIdentity:composed.identityVerifier,synthesize,clock,operationTtlMs,onRequestEnabled,maximumDailyCalls});
   return Object.freeze({code:'desktop04_ready',factory,onRequestEnabled,maximumDailyCalls});
