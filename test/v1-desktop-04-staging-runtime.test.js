@@ -100,7 +100,7 @@ test('normal server HTTP mounts desktop tools only behind exact gates, uses real
  const {db,client}=await database();let calls=0;
  const runtime=await createShenShuRuntimeServer({env:env(),d1Client:client,currentSha:sha,
  fetchImpl:async(url,options)=>{assert.equal(url,'https://api.minimaxi.com/v1/t2a_v2');calls++;
- const body=JSON.parse(options.body);assert.equal(body.voice_setting.voice_id,DESKTOP_04_VOICE_ID);assert.equal(body.text,'电脑官端测试。');
+ const body=JSON.parse(options.body);assert.deepEqual(body.voice_setting,{voice_id:DESKTOP_04_VOICE_ID,speed:0.93,vol:0.95,pitch:-1});assert.equal(body.text,'电脑官端测试。');
  return new Response(JSON.stringify({base_resp:{status_code:0},data:{audio:audio.toString('hex')}}),{headers:{'content-type':'application/json'}});},
  });
  assert.equal(runtime.desktop04Mounted,true);assert.equal(runtime.paidConfirmMounted,false);
