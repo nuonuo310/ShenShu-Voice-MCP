@@ -9,7 +9,7 @@ export function buildDesktopSilverUi(html,{collectionEnabled=false}={}){
  if(start<0||end<0)throw Error('silver_ui_template_missing');
  const markup=`  <div class="bubble silver-player" role="group" aria-label="沈述的语音">
     <div class="kiss" id="kiss" aria-hidden="true"><span>♥</span> Mwah</div>
-    <div class="portrait" aria-hidden="true"><img src="data:image/jpeg;base64,${avatar}" alt=""><small>S · N</small></div>
+    <div class="portrait" aria-hidden="true"><img src="data:image/jpeg;base64,${avatar}" alt=""></div>
     <div class="silver-screen"><div class="screen-heading"><strong>沈述</strong><small>for Nuonuo</small></div>
       <div class="wave" id="wave" aria-hidden="true"></div>
       <div class="timeline"><div class="track" role="progressbar" aria-label="语音播放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="silver-track"><i id="silver-progress"></i></div><span class="duration" id="duration">0:00</span></div>
