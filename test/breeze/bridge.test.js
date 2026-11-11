@@ -100,9 +100,38 @@ test('Breeze result saves and reloads with truthful provenance, receipt cannot b
 test('independent silver resource loads real Breeze bytes into existing playback and favorite path',async()=>{
  const dom=new JSDOM(buildBreezeSilverUi({collectionEnabled:true}),{runScripts:'outside-only'}),w=dom.window;
  w.HTMLMediaElement.prototype.pause=function(){};w.requestAnimationFrame=()=>1;w.cancelAnimationFrame=()=>{};
+ const contexts=[];
+ w.AudioContext=class{
+  constructor(){this.state='running';this.currentTime=0;contexts.push(this);}
+  async resume(){} async close(){this.state='closed';}
+  async decodeAudioData(bytes){assert.deepEqual(Buffer.from(bytes),audio);return {duration:.5,sampleRate:16000,numberOfChannels:1};}
+  createBufferSource(){return this.source={connect(){},disconnect(){},start(){this.started=true},stop(){this.stopped=true}};}
+ };
  w.parent.postMessage=()=>{};w.eval(w.document.querySelector('script').textContent);
  const audio=pcm24ToWav16(pcm()),record={id:'voice_'+'b'.repeat(32),source:'breeze',generated:true,desktopDirect04:true,text:'哥哥在。',audioMimeType:'audio/wav',audioBase64:audio.toString('base64'),durationSeconds:.5};
  await w.eval('breezePending('+JSON.stringify({structuredContent:{id:record.id,breezePending:true,state:'ready'},_meta:{shenshuPrivateAudio:{record},shenshuCollection:{receipt:{createdAt:'2026-11-11T00:00:00.000Z',signature:'s'}}}})+')');
  assert.equal(w.document.getElementById('play').disabled,false);assert.equal(w.document.getElementById('favorite').disabled,false);assert.equal(w.document.getElementById('text').textContent,record.text);
- assert.match(w.document.getElementById('status').textContent,/本地声音已准备好/);dom.window.close();
+ assert.match(w.document.getElementById('status').textContent,/本地声音已准备好/);
+ assert.equal(contexts.length,0,'ready result must not autoplay');
+ w.document.getElementById('play').click();await new Promise(r=>setImmediate(r));
+ assert.equal(contexts.length,1,'user click must reach the Breeze Web Audio playback path');
+ assert.equal(contexts[0].source.started,true);
+ contexts[0].currentTime=.25;w.eval('paint()');
+ assert.equal(w.document.getElementById('silver-track').getAttribute('aria-valuenow'),'50');
+ w.document.getElementById('play').click();await new Promise(r=>setImmediate(r));
+ assert.equal(contexts[0].source.stopped,true);
+ const calls=[];
+ w.parent.postMessage=msg=>{
+  if(msg.method!=='tools/call')return;
+  calls.push(msg.params.name);
+  assert.equal(msg.params.arguments.id,record.id);
+  queueMicrotask(()=>w.dispatchEvent(new w.MessageEvent('message',{source:w.parent,data:{jsonrpc:'2.0',id:msg.id,result:{structuredContent:{id:record.id,breezePending:true,state:'ready'},_meta:{shenshuPrivateAudio:{record}}}}})));
+ };
+ await w.eval('breezePending('+JSON.stringify({structuredContent:{id:record.id,breezePending:true,state:'ready'}})+')');
+ assert.deepEqual(calls,['poll_shenshu_local_breeze'],'reopening reads the existing result only');
+ assert.equal(w.document.getElementById('play').disabled,false);
+ assert.equal(contexts.length,1,'reopening must not autoplay');
+ w.document.getElementById('play').click();await new Promise(r=>setImmediate(r));
+ assert.equal(contexts.length,2);assert.equal(contexts[1].source.started,true);
+ dom.window.close();
 });

@@ -30,6 +30,7 @@ export function buildDesktopSilverUi(html,{collectionEnabled=false,allowBreeze=f
  html=html.replace('</script>',`\n${addon.replace('__COLLECTION_ENABLED__',JSON.stringify(collectionEnabled))}\n</script>`);
  if(allowBreeze){
   html=html.replace('source:"minimax",generated:true,errorCode:', 'source:next?.source==="breeze"?"breeze":"minimax",generated:true,errorCode:');
+  html=html.replace('!["minimax","private-fixture"].includes(record?.source)', '!["minimax","private-fixture","breeze"].includes(record?.source)');
   for(const expr of ['next.source','record?.source','record.source'])html=html.replaceAll(expr+'==="minimax"','('+expr+'==="minimax"||'+expr+'==="breeze")');
  }
  return html;

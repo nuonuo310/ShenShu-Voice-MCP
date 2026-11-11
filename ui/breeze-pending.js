@@ -5,6 +5,12 @@ async function breezePending(result){
  if(breezeActiveId===job.id)return;breezeActiveId=job.id;const epoch=++breezePollEpoch;
  const deadline=Date.now()+20*60*1000;
  try{
+  // Reopening the same completed request supplies its ID, not another audio
+  // payload. Read the original result once; never enqueue or synthesize again.
+  if(job.state==='ready'&&!result?._meta?.shenshuPrivateAudio?.record){
+   result=await request('tools/call',{name:'poll_shenshu_local_breeze',arguments:{id:job.id}});
+   if(result?.isError||result?.structuredContent?.id!==job.id)throw Error();
+  }
   while(epoch===breezePollEpoch&&Date.now()<deadline){
    const state=result?.structuredContent?.state;
    if(state==='ready'){

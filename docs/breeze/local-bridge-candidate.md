@@ -81,6 +81,22 @@ Final test counts are reported in the PR and handoff.
 Still NOT proven: real Windows worker → real HTTPS/D1 → ChatGPT polling → audible
 playback → favorite/reload. UI DOM success is not audible host acceptance.
 
+### Desktop acceptance repair (2026-11-11)
+
+The owner reported a completed 2.8-second local generation and a ChatGPT card
+showing the text, duration and ready status. Clicking play left the Web Audio
+diagnostic at context not-created/decode not-started. The generated Breeze UI
+accepted the record but the final playback function still allowed only MiniMax
+and private fixtures. The repair adds Breeze to that guard only when allowBreeze
+is enabled; the default MiniMax UI and base template are unchanged.
+
+The DOM regression now clicks the real button, checks decoded original bytes,
+source.start, 50% progress and stop, rather than checking readiness alone. It also
+reopens a completed request by reading its existing result, with no enqueue or
+synthesis, then plays those same bytes. Real audible playback remains unverified.
+Windows worker files do not change in this repair. Keep the same request key for
+acceptance recovery; do not issue another generation to repair playback.
+
 Before any online rollout:
 1. Retain existing exact live SHA and a manual rollback path. No branch merge.
 2. Review/approve this candidate, provision a separate random 32-byte worker token
