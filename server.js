@@ -393,7 +393,7 @@ export async function createShenShuRuntimeServer({
     createD1Client: createComposedD1Client,
     ...(clock === undefined ? {} : { clock }),
   });
-  const breezeRuntime=await composeBreezeRuntime({env,currentSha,createD1Client:createComposedD1Client,identityVerifier:composed.identityVerifier});
+  const breezeRuntime=await composeBreezeRuntime({env,createD1Client:createComposedD1Client,identityVerifier:composed.identityVerifier});
   const voiceCollection = desktop04.factory ? await composeDesktopCollection({env,identityVerifier:composed.identityVerifier,createD1Client:createComposedD1Client}) : null;
   const server = createShenShuHttpServer({
     env,

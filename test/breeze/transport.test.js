@@ -7,6 +7,9 @@ import {makeStagingMcpServer} from '../../src/staging-authenticated-mcp.js';
 import {createBreezeWorkerHandler} from '../../src/breeze/worker-http.js';
 import {composeBreezeRuntime} from '../../src/breeze/runtime.js';
 import {BREEZE_RESOURCE} from '../../src/breeze/app-surface.js';
+import {DatabaseSync} from 'node:sqlite';
+import {readFile} from 'node:fs/promises';
+import {PRIVATE_TEXT_MASTER_KEY_ENV} from '../../src/v1-p2-staging-sealed-closure.js';
 const principal='p'.repeat(43);
 test('worker HTTP rejects missing auth and injected owner, returns private no-store task only to mapped identity',async()=>{
  let calls=0;const handler=createBreezeWorkerHandler({jobs:{claim:p=>{assert.equal(p,principal);calls++;return {id:'voice_'+'a'.repeat(32),text:'私有文字'};}},resolveWorkerPrincipal:req=>{if(req.headers.authorization!=='Bearer test-only')throw Error();return principal;}});
@@ -35,4 +38,13 @@ test('partial runtime configuration remains absent before any D1 access',async()
  let db=0;const make=()=>{db++;throw Error();};
  assert.equal(await composeBreezeRuntime({env:{},createD1Client:make}),null);
  assert.equal(await composeBreezeRuntime({env:{SHENSHU_BREEZE_ENABLED:'1'},createD1Client:make}),null);assert.equal(db,0);
+});
+test('normal Render startup uses platform commit, no test SHA injection; mismatched release stays off',async()=>{
+ const db=new DatabaseSync(':memory:');db.exec(await readFile(new URL('../../db/d1/008_breeze_jobs.sql',import.meta.url),'utf8'));
+ const sha='a'.repeat(40),env={SHENSHU_BREEZE_ENABLED:'1',SHENSHU_STAGING_RESOURCE_MODE:'1',SHENSHU_STAGING_ORIGIN:'https://shenshu-voice-mcp-staging.onrender.com',SHENSHU_DESKTOP_04_SILVER_UI_ENABLED:'1',RENDER_GIT_COMMIT:sha,SHENSHU_BREEZE_APPROVED_SHA:sha,SHENSHU_BREEZE_WORKER_PRINCIPAL:principal,SHENSHU_BREEZE_WORKER_TOKEN:Buffer.alloc(32,8).toString('base64url'),[PRIVATE_TEXT_MASTER_KEY_ENV]:Buffer.alloc(32,12).toString('base64url')};
+ const args={env,identityVerifier:async()=>({subject:principal}),createD1Client:()=>({query:async(sql,p=[])=>db.prepare(sql).all(...p)})};
+ try{const active=await composeBreezeRuntime(args);assert.ok(active?.jobs);assert.equal(typeof active.workerHandler,'function');
+ assert.equal(await composeBreezeRuntime({...args,env:{...env,RENDER_GIT_COMMIT:'b'.repeat(40)},currentSha:sha}),null);
+ assert.equal(await composeBreezeRuntime({...args,env:{...env,RENDER_GIT_COMMIT:undefined},currentSha:sha}),null);
+ }finally{db.close();}
 });
