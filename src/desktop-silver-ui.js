@@ -3,7 +3,7 @@ const css=readFileSync(new URL('../ui/desktop-silver.css',import.meta.url),'utf8
 const addon=readFileSync(new URL('../ui/desktop-collection.js',import.meta.url),'utf8');
 const avatar=readFileSync(new URL('../ui/assets/shen-avatar.jpeg',import.meta.url)).toString('base64');
 /** Specializes only the desktop resource; leaves public mock and diagnostics source alone. */
-export function buildDesktopSilverUi(html,{collectionEnabled=false}={}){
+export function buildDesktopSilverUi(html,{collectionEnabled=false,allowBreeze=false}={}){
  const start=html.indexOf('  <div class="bubble"');
  const end=html.indexOf('  <p class="text"',start);
  if(start<0||end<0)throw Error('silver_ui_template_missing');
@@ -28,5 +28,9 @@ export function buildDesktopSilverUi(html,{collectionEnabled=false}={}){
  html=html.replace('  if(msg.method==="ui/notifications/tool-result"){',`  if(msg.method==="ui/notifications/tool-result"){
     if(msg.params?.structuredContent?.collectionView){desktopCollection.showPage(msg.params?._meta?.shenshuCollectionPage);return;}`);
  html=html.replace('</script>',`\n${addon.replace('__COLLECTION_ENABLED__',JSON.stringify(collectionEnabled))}\n</script>`);
+ if(allowBreeze){
+  html=html.replace('source:"minimax",generated:true,errorCode:', 'source:next?.source==="breeze"?"breeze":"minimax",generated:true,errorCode:');
+  for(const expr of ['next.source','record?.source','record.source'])html=html.replaceAll(expr+'==="minimax"','('+expr+'==="minimax"||'+expr+'==="breeze")');
+ }
  return html;
 }

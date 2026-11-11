@@ -19,17 +19,17 @@ function codec(key){return {
  open(value,aad){const b=Buffer.from(value,'base64');if(b.length<28)throw Error('collection_invalid');
  const c=createDecipheriv('aes-256-gcm',key,b.subarray(0,12));c.setAAD(Buffer.from(aad));c.setAuthTag(b.subarray(12,28));return Buffer.concat([c.update(b.subarray(28)),c.final()]);}
 };}
-function clean(record){
+function clean(record,allowBreeze=false){
  if(!record||!ID.test(record.id??''))throw Error('collection_invalid');
  const text=checkText(record.text);
- if(record.source!=='minimax'||record.generated!==true||record.desktopDirect04!==true||record.audioMimeType!=='audio/wav'||
+ if((record.source!=='minimax'&&!(allowBreeze&&record.source==='breeze'))||record.generated!==true||record.desktopDirect04!==true||record.audioMimeType!=='audio/wav'||
  typeof record.audioBase64!=='string'||record.audioBase64.length>Math.ceil(MAX_WAV_BYTES/3)*4||!/^[A-Za-z0-9+/]*={0,2}$/.test(record.audioBase64))throw Error('collection_invalid');
  const audio=Buffer.from(record.audioBase64,'base64');const meta=validateWav(audio);
  if(audio.toString('base64')!==record.audioBase64||!Number.isFinite(record.durationSeconds)||Math.abs(meta.durationSeconds-record.durationSeconds)>.001)throw Error('collection_invalid');
- return {id:record.id,text,audioBase64:record.audioBase64,durationSeconds:meta.durationSeconds};
+ return {id:record.id,text,audioBase64:record.audioBase64,durationSeconds:meta.durationSeconds,...(record.source==='breeze'?{source:'breeze'}:{})};
 }
 const digest=r=>createHash('sha256').update(JSON.stringify(r)).digest('base64url');
-export function createPrivateVoiceCollection({client,masterKey,clock=Date.now}={}){
+export function createPrivateVoiceCollection({client,masterKey,clock=Date.now,allowBreeze=false}={}){
  if(typeof client?.query!=='function'||typeof clock!=='function')throw Error('collection_unavailable');
  const k=keys(masterKey),crypt=codec(k.encryption);
  const stamp=()=>new Date(clock()).toISOString();
@@ -39,9 +39,9 @@ export function createPrivateVoiceCollection({client,masterKey,clock=Date.now}={
   if(m.id!==row.id||!ISO(m.createdAt)||m.createdAt!==row.created_at||checkText(m.body)!==m.body)throw Error('collection_invalid');return m;}
  return Object.freeze({
   async verifySchema(){for(const t of ['voice_favorites','voice_favorite_parts'])await client.query(`SELECT * FROM ${t} LIMIT 0`);return true;},
-  issueReceipt(principal,record){identity(principal);const r=clean(record),createdAt=ISO(record.createdAt)?record.createdAt:stamp();return {createdAt,signature:sign(principal,r,createdAt)};},
+  issueReceipt(principal,record){identity(principal);const r=clean(record,allowBreeze),createdAt=ISO(record.createdAt)?record.createdAt:stamp();return {createdAt,signature:sign(principal,r,createdAt)};},
   async save(principal,record,receipt){
-   identity(principal);const r=clean(record);
+   identity(principal);const r=clean(record,allowBreeze);
    if(!ISO(receipt?.createdAt)||typeof receipt?.signature!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(receipt.signature))throw Error('collection_invalid');
    const expected=sign(principal,r,receipt.createdAt);
    if(!timingSafeEqual(Buffer.from(expected),Buffer.from(receipt.signature)))throw Error('collection_invalid');
@@ -49,7 +49,7 @@ export function createPrivateVoiceCollection({client,masterKey,clock=Date.now}={
    if(old[0])return metadata(old[0],principal); // idempotent, including process restart
    // Compatible metadata: id/title/date/duration/body/captions/demo from existing gallery.
    const m={id:r.id,title:'沈述 · 语音留言',date:receipt.createdAt.slice(0,10),createdAt:receipt.createdAt,
-    duration:r.durationSeconds,body:r.text,captions:[],demo:false};
+    duration:r.durationSeconds,body:r.text,captions:[],demo:false,...(r.source==='breeze'?{source:'breeze'}:{})};
    const encrypted=crypt.seal(Buffer.from(r.audioBase64,'base64'),aad(principal,r.id,'audio'));
    const chunks=encrypted.match(/.{1,64000}/g),upload=randomUUID(),staged=stamp();
    try{
@@ -85,7 +85,8 @@ export function createPrivateVoiceCollection({client,masterKey,clock=Date.now}={
    }
    const audio=crypt.open(parts.join(''),aad(principal,id,'audio'));const wav=validateWav(audio);
    if(Math.abs(wav.durationSeconds-m.duration)>.001)throw Error('collection_invalid');
-   return {id,title:m.title,text:m.body,durationSeconds:m.duration,createdAt:m.createdAt,voiceLabel:'沈述',generated:true,source:'minimax',desktopDirect04:true,audioMimeType:'audio/wav',audioBase64:audio.toString('base64')};
+   if(m.source!==undefined&&m.source!=='breeze')throw Error('collection_invalid');
+   return {id,title:m.title,text:m.body,durationSeconds:m.duration,createdAt:m.createdAt,voiceLabel:'沈述',generated:true,source:m.source??'minimax',desktopDirect04:true,audioMimeType:'audio/wav',audioBase64:audio.toString('base64')};
   },
   async remove(principal,id){identity(principal,id);await client.query('DELETE FROM voice_favorites WHERE principal=? AND id=?',[principal,id]);return {removed:true,id};},
  });

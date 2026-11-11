@@ -1,3 +1,4 @@
+import {createBreezeTools,buildBreezeSilverUi,BREEZE_RESOURCE} from './breeze/app-surface.js';
 import {createCollectionTools,COLLECTION_RESOURCE} from './private-voice-collection.js';
 import {buildDesktopSilverUi} from './desktop-silver-ui.js';
 /**
@@ -84,13 +85,14 @@ export function createStagingIdentityVerifier(env,{issuer,audience,jwksCache=nul
   } catch {return null;}
 }
 
-export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,privateFixtureEnabled=false,proposalTools=null,desktop04Tools=null,voiceCollection=null,silverUi=false}={}) {
+export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,privateFixtureEnabled=false,proposalTools=null,desktop04Tools=null,voiceCollection=null,silverUi=false,breezeJobs=null}={}) {
   if(typeof verifiedSubject!=="string" || verifiedSubject.length<8) throw Error("missing_verified_subject");
   const server=new Server(
     {name:"shenshu-identity-stage",version:"0.2.0"},
     {capabilities:{tools:{},resources:{}}}
   );
   const collectionTools=voiceCollection&&desktop04Tools&&silverUi?createCollectionTools({collection:voiceCollection,principal:verifiedSubject}):null;
+  const breezeTools=breezeJobs&&silverUi&&privateFixtureEnabled?createBreezeTools({principal:verifiedSubject,jobs:breezeJobs,collection:voiceCollection}):null;
   const oauth=[{type:"oauth2",scopes:["voice:speak"]}];
   const tools=[{
     name:"verify_shenshu_login",
@@ -197,22 +199,26 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
       {...tool,_meta:{...tool._meta,ui:{...tool._meta.ui,resourceUri:COLLECTION_RESOURCE}}}:tool));
   }
   if(collectionTools)tools.push(...collectionTools.tools);
+  if(breezeTools)tools.push(...breezeTools.tools);
   server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[
+    ...(breezeTools?[{uri:BREEZE_RESOURCE,name:"沈述本地声音",mimeType:RESOURCE_MIME_TYPE}]:[]),
     {uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE},
     ...(desktop04Tools?[{uri:silverUi?COLLECTION_RESOURCE:DESKTOP_04_UI_RESOURCE,name:"沈述 04 语音",mimeType:RESOURCE_MIME_TYPE}]:[])
   ]:[]}));
   server.setRequestHandler(ReadResourceRequestSchema,async request=>{
+    if(breezeTools&&request.params.uri===BREEZE_RESOURCE)return {contents:[{uri:BREEZE_RESOURCE,mimeType:RESOURCE_MIME_TYPE,text:buildBreezeSilverUi({collectionEnabled:!!collectionTools}),_meta:{ui:{prefersBorder:false,csp:{connectDomains:[],resourceDomains:[]}}}}]};
     const silver=desktop04Tools!==null&&silverUi&&request.params.uri===COLLECTION_RESOURCE;
     const desktop=desktop04Tools!==null&&(request.params.uri===DESKTOP_04_UI_RESOURCE||silver);
     if(!privateFixtureEnabled||(!desktop&&request.params.uri!==PRIVATE_FIXTURE_UI_URI))throw Error("unknown_resource");
     const desktopUi=desktop04Tools?.tools.length===4?
       desktop04Ui.replaceAll('每天最多 1 段','每天最多 10 条'):desktop04Ui;
-    return {contents:[{uri:request.params.uri,mimeType:RESOURCE_MIME_TYPE,text:desktop?(silver?buildDesktopSilverUi(desktopUi,{collectionEnabled:!!collectionTools}):desktopUi):oauthUiWithMarker,
+    return {contents:[{uri:request.params.uri,mimeType:RESOURCE_MIME_TYPE,text:desktop?(silver?buildDesktopSilverUi(desktopUi,{collectionEnabled:!!collectionTools,allowBreeze:!!breezeTools}):desktopUi):oauthUiWithMarker,
       _meta:{ui:{prefersBorder:false,csp:{connectDomains:[],resourceDomains:["https://shenshu-voice-mcp.onrender.com"]}}}}]};
   });
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
   server.setRequestHandler(CallToolRequestSchema,async request=>{
     const args=request.params.arguments;
+    if(breezeTools&&breezeTools.tools.some(t=>t.name===request.params.name))return breezeTools.call(request.params.name,args);
     if(proposalTools && proposalTools.tools.some(tool=>tool.name===request.params.name)) {
       return proposalTools.call(request.params.name,args);
     }
@@ -288,7 +294,7 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
  */
 export async function handleStagingAuthenticatedMcp(req,res,{
   env,issuer,audience,resourceMetadataUrl,jwksCache=null,proposalBroker=null,
-  identityVerifier=null,desktop04Factory=null,voiceCollection=null
+  identityVerifier=null,desktop04Factory=null,voiceCollection=null,breezeJobs=null
 }) {
   const challenge='Bearer resource_metadata="'+resourceMetadataUrl+'", scope="voice:speak"';
   const refuse=(status,reason, extra={})=>{
@@ -359,7 +365,7 @@ export async function handleStagingAuthenticatedMcp(req,res,{
   }
   const server=makeStagingMcpServer({verifiedSubject:verifiedIdentity.subject,admissionDryRun,
     privateFixtureEnabled:env.SHENSHU_PRIVATE_FIXTURE_ENABLED==="1",
-    proposalTools,desktop04Tools,voiceCollection,
+    proposalTools,desktop04Tools,voiceCollection,breezeJobs,
     silverUi:env.SHENSHU_DESKTOP_04_SILVER_UI_ENABLED==="1"});
   const transport=new StreamableHTTPServerTransport({
     sessionIdGenerator:undefined,enableJsonResponse:true
