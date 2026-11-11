@@ -4,7 +4,7 @@
 import {requireCanonicalPrincipal} from '../canonical-principal.js';
 import {readFileSync} from 'node:fs';
 import {buildDesktopSilverUi} from '../desktop-silver-ui.js';
-export const BREEZE_RESOURCE='ui://shenshu/breeze-silver-v1.html';
+export const BREEZE_RESOURCE='ui://shenshu/breeze-silver-v2.html';
 export function createBreezeTools({principal,jobs,collection}={}){
  requireCanonicalPrincipal(principal);
  const securitySchemes=[{type:'oauth2',scopes:['voice:speak']}];

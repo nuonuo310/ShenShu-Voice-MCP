@@ -96,6 +96,8 @@ reopens a completed request by reading its existing result, with no enqueue or
 synthesis, then plays those same bytes. Real audible playback remains unverified.
 Windows worker files do not change in this repair. Keep the same request key for
 acceptance recovery; do not issue another generation to repair playback.
+The repaired tool uses a new Breeze resource URI (v2) so newly opened cards do
+not reuse a cached copy of the broken v1 player. MiniMax resource URIs stay fixed.
 
 Before any online rollout:
 1. Retain existing exact live SHA and a manual rollback path. No branch merge.
