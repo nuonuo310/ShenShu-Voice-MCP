@@ -35,7 +35,7 @@ const desktopCollection=(()=>{
  $('gallery-close').addEventListener('click',()=>{gallery.hidden=true;});
  $('gallery-more').addEventListener('click',()=>{if(cursor)void load(true);});
  sync();
- return {receive,showPage(page){gallery.hidden=false;try{addRows(page);}catch{$('gallery-status').textContent='暂时读不到收藏。';}},
+ return {receive,showPage(page){gallery.hidden=false;if(!current)$('status').textContent='选择一段收藏后，可在上方播放。';try{addRows(page);}catch{$('gallery-status').textContent='暂时读不到收藏。';}},
   paint(p,playing,d,elapsed){
    $('silver-progress').style.width=(p*100)+'%';$('silver-track').setAttribute('aria-valuenow',String(Math.round(p*100)));
    $('duration').textContent=fmt(elapsed)+' / '+fmt(d);

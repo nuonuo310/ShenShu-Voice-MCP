@@ -52,14 +52,14 @@ flowchart TD
 | `server.js`、`src/protected-resource-shell.js`、`src/staging-authenticated-mcp.js` | 在原认证边界内注入收藏工具；成功音频附加凭据；按开关选择桌面 UI |
 | `src/desktop-silver-ui.js`、`ui/desktop-silver.css`、`ui/desktop-collection.js`、`ui/assets/shen-avatar.jpeg` | 桌面银色外观、星星与最小声音馆，复用原播放器 |
 | `scripts/preview-desktop-collection.mjs` | 仅本地的合成提示音预览，支持导出单 HTML |
-| `test/private-voice-collection.test.js`、`test/desktop-collection-mcp.test.js`、`test/desktop-collection-ui.test.js` | 持久化、权限、加密、故障隔离及真实 UI 模块交互测试 |
+| `test/private-voice-collection.test.js`、`test/desktop-collection-mcp.test.js`、`test/desktop-collection-ui.test.js`、`test/desktop-preview-export.test.js` | 持久化、权限、加密、故障隔离及真实 UI 模块交互测试 |
 | `package.json`、`package-lock.json` | 仅增加测试用 jsdom；生产依赖版本未改 |
 
 以下主链路文件与基线逐字相同：`ui/mcp-bubble.html`、`src/minimax-adapter.js`、`src/live-voice.js`、`src/v1-desktop-direct-04-offline.js`、`src/v1-desktop-04-staging-runtime.js`。没有改模型、voice ID、自然版参数、每日额度和按请求生成策略。
 
 ## 离线验证及预览
 
-已通过：`npm test` 502/502（原 484 + 新增 18）；`npm audit --omit=dev --audit-level=high` 无漏洞；`node test/smoke-server.mjs`；`git diff --check`。
+已通过：`npm test` 503/503（原 484 + 新增 19）；`npm audit --omit=dev --audit-level=high` 无漏洞；`node test/smoke-server.mjs`；`git diff --check`。
 
 新增测试覆盖：重开 SQLite 数据库后读取原 WAV/完整文字/原时间；跨本人拒绝读取和凭据重放；内容/签名/时间篡改；并发与重试幂等；部分上传失败；密文篡改；最大 WAV 与真实响应大小边界；同时间分页；组件私有数据边界；凭据失败保留原生成结果；收藏失败保留正在播放的源；重建 UI 后列表、载入及取消收藏；文本安全渲染。
 
@@ -73,6 +73,10 @@ node scripts/preview-desktop-collection.mjs --export preview/offline-player.html
 此文件只含明确标注的合成提示音、虚拟宿主和本机演示收藏，不是 04 试听、云端持久化或官端验收。也可运行脚本不带参数，在本机 `http://127.0.0.1:3188/` 连接真实收藏适配层与内存 SQLite。预览服务器仅绑定回环地址，禁止部署；内存演示库仅在进程运行期间保留。
 
 后续预览修正：用户在内嵌 HTML 中遇到“正在收藏”直到超时。原因是旧演示只模拟自己的 `window.postMessage`，但组件原请求发向真实父窗口；此前顶层测试的 `parent===self` 漏掉此问题。现在仅在预览导出中将请求和来源检查绑定到演示自己的窗口，生产 MCP 父窗口通信不变。新增“父窗口非自身”和“浏览器拒绝本机存储”两项回归；存储受限时明确标注“收藏仅本次演示”，不伪称刷新后保留。去掉头像 S · N，聊天版宽度从 580px 收到 460px，机身高度约从 156px 收到 122px，保留白屏、标题层级及实际按钮点击区域。
+
+官端接续（2026-11-11）：用户在专用 D1 控制台回传了两表、索引、触发器四行结果；`78e666c…` 已实际部署，声音馆不计费读取成功，用户截图确认银色界面与空列表。随后唯一一次获授权的真实语音请求显示旧金色卡片，有 4 秒音频，但没有收藏星星，不能算收藏验收通过，也不能为修外观重新生成。服务器仍运行正确候选；旧 speak/prepare 描述与银色声音馆复用了旧资源 URI，宿主缓存是当前解释，尚无宿主内部缓存证据。修正为仅在银色开关开启时，把 speak、prepare、声音馆都指向新的 `ui://shenshu/desktop-04-silver-collection-v1.html`；旧 URI 保持旧界面以兼容旧卡片。修改仅涉及界面资源选择，不改生成、授权和播放链。新增资源选择、旧卡片兼容、回退拒绝新资源回归；空声音馆文案同步改为“选择一段收藏后，可在上方播放”。需要重新部署该修正并刷新工具，再以不计费声音馆验证新资源；已有旧卡片音频只能保留在当前卡片播放，本次没有读取或重新合成它，真实收藏/刷新重播仍待验收。
+
+部署操作记录：实测 Render 的环境变量更新连接即使服务 Auto-Deploy 为 off，也会自动触发原部署分支的构建。第一次更新候选批准 SHA 后，旧版曾因 SHA 不匹配未挂载 04；已将批准 SHA 恢复为旧版并等到恢复部署 live，日志确认 `desktop04_ready`、on-request 开启、每日 10 条。随后用户在控制台 Save only 并指定 `78e666c…` 部署，服务正常挂载。后续批准 SHA 必须在控制台 **Save only**，紧接着 **Deploy a specific commit**；不要再次使用该自动触发部署的连接去更新批准 SHA，也不要触发仍指向旧分支的 Deploy latest commit。
 
 当前远程预览浏览器不能连接该执行环境的回环服务，且安全策略禁止打开本地 `file:` 页面，因此没有完成浏览器截图级视觉验收。DOM 交互测试已经执行；最终白底排版和官端实际播放仍需部署候选验证，不用离线通过冒充官端验收。
 

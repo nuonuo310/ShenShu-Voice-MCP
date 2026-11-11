@@ -5,7 +5,7 @@
 import {createCipheriv,createDecipheriv,createHash,createHmac,hkdfSync,randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 import {checkText,validateWav,MAX_WAV_BYTES} from './contract.js';
 import {requireCanonicalPrincipal} from './canonical-principal.js';
-export const COLLECTION_RESOURCE='ui://shenshu/desktop-04-bubble-v1.html';
+export const COLLECTION_RESOURCE='ui://shenshu/desktop-04-silver-collection-v1.html';
 const ID=/^voice_[a-f0-9]{32}$/;
 const ISO=v=>typeof v==='string'&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString()===v;
 function identity(p,id){requireCanonicalPrincipal(p);if(id!==undefined&&!ID.test(id))throw Error('collection_invalid');}

@@ -1,4 +1,4 @@
-import {createCollectionTools} from './private-voice-collection.js';
+import {createCollectionTools,COLLECTION_RESOURCE} from './private-voice-collection.js';
 import {buildDesktopSilverUi} from './desktop-silver-ui.js';
 /**
  * P2M: authenticated, NON-BILLABLE MCP handshake for staged OAuth testing.
@@ -191,19 +191,23 @@ export function makeStagingMcpServer({verifiedSubject,admissionDryRun=null,priva
       desktop04Tools.tools[2]._meta.ui.visibility[0]!=="app") {
       throw new Error("desktop04_tools_unavailable");
     }
-    tools.push(...desktop04Tools.tools);
+    // A new UI needs a new resource identity. Otherwise hosts can retain the
+    // already-cached gold player for unchanged speak/prepare descriptors.
+    tools.push(...desktop04Tools.tools.map(tool=>silverUi&&tool._meta?.ui?.resourceUri===DESKTOP_04_UI_RESOURCE?
+      {...tool,_meta:{...tool._meta,ui:{...tool._meta.ui,resourceUri:COLLECTION_RESOURCE}}}:tool));
   }
   if(collectionTools)tools.push(...collectionTools.tools);
   server.setRequestHandler(ListResourcesRequestSchema,async()=>({resources:privateFixtureEnabled?[
     {uri:PRIVATE_FIXTURE_UI_URI,name:"ShenShu private fixture bubble",mimeType:RESOURCE_MIME_TYPE},
-    ...(desktop04Tools?[{uri:DESKTOP_04_UI_RESOURCE,name:"沈述 04 语音",mimeType:RESOURCE_MIME_TYPE}]:[])
+    ...(desktop04Tools?[{uri:silverUi?COLLECTION_RESOURCE:DESKTOP_04_UI_RESOURCE,name:"沈述 04 语音",mimeType:RESOURCE_MIME_TYPE}]:[])
   ]:[]}));
   server.setRequestHandler(ReadResourceRequestSchema,async request=>{
-    const desktop=desktop04Tools!==null&&request.params.uri===DESKTOP_04_UI_RESOURCE;
+    const silver=desktop04Tools!==null&&silverUi&&request.params.uri===COLLECTION_RESOURCE;
+    const desktop=desktop04Tools!==null&&(request.params.uri===DESKTOP_04_UI_RESOURCE||silver);
     if(!privateFixtureEnabled||(!desktop&&request.params.uri!==PRIVATE_FIXTURE_UI_URI))throw Error("unknown_resource");
     const desktopUi=desktop04Tools?.tools.length===4?
       desktop04Ui.replaceAll('每天最多 1 段','每天最多 10 条'):desktop04Ui;
-    return {contents:[{uri:request.params.uri,mimeType:RESOURCE_MIME_TYPE,text:desktop?(silverUi?buildDesktopSilverUi(desktopUi,{collectionEnabled:!!collectionTools}):desktopUi):oauthUiWithMarker,
+    return {contents:[{uri:request.params.uri,mimeType:RESOURCE_MIME_TYPE,text:desktop?(silver?buildDesktopSilverUi(desktopUi,{collectionEnabled:!!collectionTools}):desktopUi):oauthUiWithMarker,
       _meta:{ui:{prefersBorder:false,csp:{connectDomains:[],resourceDomains:["https://shenshu-voice-mcp.onrender.com"]}}}}]};
   });
   server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
