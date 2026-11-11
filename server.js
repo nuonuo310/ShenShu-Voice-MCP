@@ -1,3 +1,4 @@
+import {composeDesktopCollection} from './src/desktop-collection-runtime.js';
 import { createServer as createHttpServer } from "node:http";
 import { readFileSync } from "node:fs";
 import {
@@ -192,6 +193,7 @@ export function createShenShuHttpServer({
   protectedResourceJwksCache = undefined,
   protectedResourceIdentityVerifier = null,
   desktop04Factory = null,
+  voiceCollection = null,
 } = {}) {
   if (nonbillableClosure !== null &&
       (!nonbillableClosure ||
@@ -263,6 +265,7 @@ export function createShenShuHttpServer({
     jwksCache: protectedResourceJwksCache,
     identityVerifier: protectedResourceIdentityVerifier,
     desktop04Factory,
+    voiceCollection,
   })) return;
 
   if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
@@ -385,8 +388,10 @@ export async function createShenShuRuntimeServer({
     createD1Client: createComposedD1Client,
     ...(clock === undefined ? {} : { clock }),
   });
+  const voiceCollection = desktop04.factory ? await composeDesktopCollection({env,identityVerifier:composed.identityVerifier,createD1Client:createComposedD1Client}) : null;
   const server = createShenShuHttpServer({
     env,
+    voiceCollection,
     fetchImpl,
     kodoProbe,
     nonbillableClosure: composed.nonbillableClosure,
