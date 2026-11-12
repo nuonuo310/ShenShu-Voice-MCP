@@ -39,3 +39,5 @@ After deployment, refresh tools and open the original acceptance request with it
 ## Owner preview revision
 
 The first owner screenshot showed a bordered favorite star, too much height and length, and the cat overlapping the synthetic-preview note. Revised to a fixed maximum width of 260px and minimum face height of 52px; waveform/decorations reduced proportionally. The favorite reset uses a more specific selector to override the shared toolbar button border. Preview note gets separate clearance. Width remains fixed (bounded by viewport), not duration-driven. No playback/collection transport changes.
+
+Second owner spacing revision: favorite star raised 9px overall (toolbar gap 7px removed plus 2px visual offset) and shifted 8px left, retaining the 36px interactive area. Cat reduced from 72×67 to 65×60px (about 10%), with its paws anchored to the upper edge. No audio or favorites behavior change.
