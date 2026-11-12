@@ -97,7 +97,7 @@ test('Breeze result saves and reloads with truthful provenance, receipt cannot b
  const legacy=createPrivateVoiceCollection({client:h.client,masterKey:key});assert.throws(()=>legacy.issueReceipt(owner,record));
  assert.equal((await collection.list(owner)).records[0].body,record.text);h.db.close();
 });
-test('independent silver resource loads real Breeze bytes into existing playback and favorite path',async()=>{
+test('independent cat resource loads real Breeze bytes into existing playback and favorite path',async()=>{
  const dom=new JSDOM(buildBreezeSilverUi({collectionEnabled:true}),{runScripts:'outside-only'}),w=dom.window;
  w.HTMLMediaElement.prototype.pause=function(){};w.requestAnimationFrame=()=>1;w.cancelAnimationFrame=()=>{};
  const contexts=[];
@@ -109,7 +109,7 @@ test('independent silver resource loads real Breeze bytes into existing playback
  };
  w.parent.postMessage=()=>{};w.eval(w.document.querySelector('script').textContent);
  assert.equal(w.document.body.classList.contains('desktop04'),true,'Breeze must activate desktop silver styles');
- assert.equal(w.getComputedStyle(w.document.querySelector('.silver-player')).display,'grid');
+ assert.equal(w.getComputedStyle(w.document.querySelector('.silver-player')).display,'flex');
  assert.equal(w.getComputedStyle(w.document.querySelector('.sender')).display,'none');
  assert.equal(w.getComputedStyle(w.document.getElementById('diagnostics')).display,'none');
  assert.equal(w.getComputedStyle(w.document.getElementById('wave')).height,'24px');
