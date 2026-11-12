@@ -130,3 +130,15 @@ continuous voice, pacing and warmth before/after. Same revised text, voice,
 seed 7 / cfg 2.0; daily, breath, UI and all generation paths unchanged. Existing
 local request.json files retain the old exact instruction, enabling comparison.
 No real new generation or listening performed in this environment.
+
+## Kiss instruction comparison v3 — pending real listening
+
+Owner subsequently regenerated the 78-point text and reported similar delivery
+with a clear kiss still present. Changing only one short opening phrase retained
+a clear kiss but the spoken delivery felt more daily. These are listening
+reports; no bit-identical reproduction, stable preset or root-cause proof claimed.
+
+V3 adds one instruction passage for continuous soft, lightly smiling delivery
+and adult voice identity. V2 lip-action instructions, voice, seed, cfg, daily and
+breath are unchanged. Compare on the most recent opening-phrase variant, with
+identical text; do not also change the sentence. New V3 audio is NOT_RUN here.
