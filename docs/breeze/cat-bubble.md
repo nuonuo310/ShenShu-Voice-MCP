@@ -7,7 +7,7 @@ Approved concept: short pale mist-blue speech bubble, small peeking tabby, two p
 Based on `afbdfcae3218e16ea66de2b0531a83d635cab947` (the undeployed Breeze playback/style repair). Independent branch `codex/breeze-cat-bubble-20261112`; no changes to the linked deployment branch or existing PR #148 branch.
 
 - `src/breeze/app-surface.js`: Breeze resource becomes `ui://shenshu/breeze-cat-v3.html` so existing cached silver cards do not mask the new appearance. Applies the Breeze-only presentation after the existing trusted player builder.
-- `src/breeze/cat-ui.js`, `ui/breeze-cat.css`, `ui/assets/breeze-cat.svg`: compact 326px maximum face, 16 waveform bars, cat/tail/paws/yarn, total duration and accessible play/pause labeling. CSS only targets the Breeze document. The existing hidden progress hook remains for the shared collection renderer; there is no visible seek track.
+- `src/breeze/cat-ui.js`, `ui/breeze-cat.css`, `ui/assets/breeze-cat.svg`: compact 260px maximum face, 52px minimum height (about one third lower), 16 waveform bars, borderless favorite star, cat/tail/paws/yarn, total duration and accessible play/pause labeling. CSS only targets the Breeze document. The existing hidden progress hook remains for the shared collection renderer; there is no visible seek track.
 - `scripts/preview-desktop-collection.mjs`: adds optional `--breeze` to the existing synthetic preview host; default silver output stays unchanged. No second favorites backend.
 - `preview/breeze-cat-offline.html`: self-contained synthetic-tone demonstration. Local browser storage is a demo saved/not-saved flag only, not production storage or private voice credentials.
 - `test/breeze/bridge.test.js`, `test/breeze/cat-ui.test.js`: playback regression adapted to the cat layout, cache/resource isolation, pinned MiniMax input hashes, favorites success/remove/reload/failure and original-audio playback after failure.
@@ -35,3 +35,7 @@ Download/open that HTML locally, click the synthetic-tone play button, favorite,
 No deployment performed. No change to Render settings. Keep the current live commit and environment as rollback evidence. Once the candidate is visually accepted and exact-head CI passes, use Render Save only for both existing approved-SHA keys (`SHENSHU_BREEZE_APPROVED_SHA`, `SHENSHU_STAGING_APPROVED_SHA`) and manually deploy that exact commit. Never deploy the old linked branch accidentally. No worker redownload or DB migration is needed.
 
 After deployment, refresh tools and open the original acceptance request with its unchanged requestKey/text; the new v3 card reads the existing ready audio. Confirm audible local playback and private favorite/reload on the real host. Those live acceptance steps remain pending. MiniMax must keep the existing silver appearance and unchanged paid generation path.
+
+## Owner preview revision
+
+The first owner screenshot showed a bordered favorite star, too much height and length, and the cat overlapping the synthetic-preview note. Revised to a fixed maximum width of 260px and minimum face height of 52px; waveform/decorations reduced proportionally. The favorite reset uses a more specific selector to override the shared toolbar button border. Preview note gets separate clearance. Width remains fixed (bounded by viewport), not duration-driven. No playback/collection transport changes.

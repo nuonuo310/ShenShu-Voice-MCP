@@ -112,7 +112,7 @@ test('independent cat resource loads real Breeze bytes into existing playback an
  assert.equal(w.getComputedStyle(w.document.querySelector('.silver-player')).display,'flex');
  assert.equal(w.getComputedStyle(w.document.querySelector('.sender')).display,'none');
  assert.equal(w.getComputedStyle(w.document.getElementById('diagnostics')).display,'none');
- assert.equal(w.getComputedStyle(w.document.getElementById('wave')).height,'30px');
+ assert.equal(w.getComputedStyle(w.document.getElementById('wave')).height,'24px');
  const audio=pcm24ToWav16(pcm()),record={id:'voice_'+'b'.repeat(32),source:'breeze',generated:true,desktopDirect04:true,text:'哥哥在。',audioMimeType:'audio/wav',audioBase64:audio.toString('base64'),durationSeconds:.5};
  await w.eval('breezePending('+JSON.stringify({structuredContent:{id:record.id,breezePending:true,state:'ready'},_meta:{shenshuPrivateAudio:{record},shenshuCollection:{receipt:{createdAt:'2026-11-11T00:00:00.000Z',signature:'s'}}}})+')');
  assert.equal(w.document.getElementById('play').disabled,false);assert.equal(w.document.getElementById('favorite').disabled,false);assert.equal(w.document.getElementById('text').textContent,record.text);

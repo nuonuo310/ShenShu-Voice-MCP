@@ -10,6 +10,9 @@ const root=new URL('../../',import.meta.url);
 test('Breeze compact face has no visible timeline, self-contained art and separate cache resource',()=>{
  assert.equal(BREEZE_RESOURCE,'ui://shenshu/breeze-cat-v3.html');
  const dom=new JSDOM(buildBreezeSilverUi());const d=dom.window.document;
+ const style=dom.window.getComputedStyle(d.getElementById('favorite'));
+ assert.equal(style.borderTopWidth,'0px');assert.equal(style.backgroundColor,'rgba(0, 0, 0, 0)');
+ assert.equal(dom.window.getComputedStyle(d.querySelector('.breeze-cat-player')).minHeight,'52px');
  assert.ok(d.body.classList.contains('breeze-cat'));
  assert.equal(d.querySelector('.portrait'),null);
  assert.equal(d.querySelector('.screen-heading'),null);

@@ -25,6 +25,10 @@ html=html.replace('<script type="module">',`<script>window.postMessage=async fun
 html=html.replace('</script>\n</body>',`\napplyResponse({structuredContent:{record:${JSON.stringify(record)}}});desktopCollection.receive(record,{receipt:${JSON.stringify(proof)},saved:false});\n</script>\n</body>`);
 // A visible label ensures this cannot be mistaken for a new real 04 trial.
 html=html.replace('<div class="shell">','<div class="shell"><p id="preview-note" style="font-size:11px;color:#858a92;margin:0 0 20px">离线播放器预览 · 合成提示音 · 不调用 MiniMax</p>');
+if(breezePreview){
+ html=html.replace('margin:0 0 20px','margin:0 0 56px');
+ html=html.replace('desktopCollection.receive(record,{receipt:',"$('status').textContent='离线合成提示音，可试播放与收藏。';desktopCollection.receive(record,{receipt:");
+}
 // Export is a self-contained visual demo. Its localStorage adapter is ONLY a
 // synthetic host mock; production favorites always use authenticated encrypted D1.
 if(process.argv[2]==='--export'){
