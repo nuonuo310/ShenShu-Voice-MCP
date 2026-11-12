@@ -1,8 +1,10 @@
 /** Breeze v0.1.6 multipart contract, verified against the owner's server.cpp.
  * Local loopback only. No provider fallback, model reload, or automatic retry.
  */
-import {checkText,validateWav,MAX_DURATION_SECONDS} from '../contract.js';
-export const BREEZE_DAILY_PRESET=Object.freeze({voice_id:'shenshu_04_natural',seed:'7',cfg_scale:'1.2',instruction:'自然、清晰、有温度的日常对话。语气放松亲近，使用平常说话的节奏，不要朗诵。'});
+import {validateWav,MAX_DURATION_SECONDS} from '../contract.js';
+import {prepareBreezeSpeech,resolveBreezePreset} from './presets.js';
+const {voice_id,seed,cfg_scale,instruction}=resolveBreezePreset();
+export const BREEZE_DAILY_PRESET=Object.freeze({voice_id,seed,cfg_scale,instruction});
 const MAX_PCM=24000*2*MAX_DURATION_SECONDS;
 export function localBreezeEndpoint(value='http://127.0.0.1:8080'){
  const u=new URL(value);
@@ -31,10 +33,10 @@ export function pcm24ToWav16(pcm){
  }
  validateWav(out);return out;
 }
-export async function synthesizeLocalBreeze({text,endpoint,fetchImpl=fetch,timeoutMs=600000,signal}={}){
- checkText(text);const url=localBreezeEndpoint(endpoint);
+export async function synthesizeLocalBreeze({text,presetId,endpoint,fetchImpl=fetch,timeoutMs=600000,signal}={}){
+ const {fields}=prepareBreezeSpeech({text,presetId});const url=localBreezeEndpoint(endpoint);
  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>600000)throw Error('breeze_invalid_timeout');
- const form=new FormData();for(const [key,value] of Object.entries({...BREEZE_DAILY_PRESET,text}))form.set(key,value);
+ const form=new FormData();for(const [key,value] of Object.entries(fields))form.set(key,value);
  const deadline=AbortSignal.timeout(timeoutMs),cancel=signal?AbortSignal.any([signal,deadline]):deadline;
  let response;
  try{response=await fetchImpl(url,{method:'POST',body:form,signal:cancel,redirect:'error'});}catch{throw Error('breeze_request_unknown');}
