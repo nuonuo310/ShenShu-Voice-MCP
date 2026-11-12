@@ -6,7 +6,7 @@ const dailyInstruction='自然、清晰、有温度的日常对话。语气放�
 const make=(id,label,cfg,instruction,rules)=>Object.freeze({id,label,voice_id:'shenshu_04_natural',seed:'7',cfg_scale:cfg,instruction,rules:Object.freeze(rules),reviewStatus:id==='daily'?'daily-baseline':'human-review-pending'});
 export const BREEZE_PRESETS=Object.freeze({
  daily:make('daily','日常','1.2',dailyInstruction,[]),
- kiss:make('kiss','亲吻 · 待复测','2.0',dailyInstruction+'亲吻是说话人此刻亲近对方的自然动作。[亲吻]处轻轻亲一下，动作融入前后对话，之后自然接着说话。保持原本声线；不要读标签，不要旁白、播报或表演配音。',['one-kiss','embedded-action','no-breath']),
+ kiss:make('kiss','亲吻 · 待复测','2.0','保持沈述原本的声线、自然语速和温柔亲近的语气。整段是同一次近距离对话，亲吻前后的情绪连续。[亲吻]处是说话人当下亲对方一下：嘴唇轻轻合拢再分开，发出短促、清楚的亲吻动作声，然后带着同样的温柔接着说话。不要用哼声代替亲吻，不要念出标签，不要旁白、播报或配音式表演。',['one-kiss','embedded-action','no-breath']),
  breath:make('breath','轻喘 · 待复测','2.0',dailyInstruction+'[喘息]处是一声自然、轻微的换气，嵌在说话的自然停顿里，接着清楚地说完后半句。保持原本声线和正常音量，不要刻意夸张或连续喘息，不要读标签，不要在句尾另加声音。',['one-breath','embedded-pause','no-kiss'])
 });
 export function resolveBreezePreset(presetId='daily'){

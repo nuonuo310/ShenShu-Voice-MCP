@@ -115,3 +115,18 @@ separate decision after local stability review.
 
 Automated validation results are recorded in the PR delivery receipt. No actual
 browser visual screenshot or real Breeze audio is represented by DOM tests.
+
+## Kiss instruction comparison v2 — pending real listening
+
+Owner reports: initial kiss candidate had weak scene continuity; a manually
+revised sentence retained appropriate pace and warmth but the event sounded
+like a soft hum, without a clear kiss. These are owner listening reports, not
+independent audio inspection. First candidate was marked needs adjustment by
+the owner. No stable-support finding.
+
+Change only kiss instruction for the next comparison: remove inherited daily
+instruction prefix and explicitly describe a brief lip-action sound with
+continuous voice, pacing and warmth before/after. Same revised text, voice,
+seed 7 / cfg 2.0; daily, breath, UI and all generation paths unchanged. Existing
+local request.json files retain the old exact instruction, enabling comparison.
+No real new generation or listening performed in this environment.
