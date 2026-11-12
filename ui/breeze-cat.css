@@ -1,0 +1,24 @@
+/* Compact mist-blue chat bubble. Scoped exclusively to the Breeze resource. */
+body.breeze-cat{color-scheme:light;color:#536e7e;padding:53px 14px 12px;background:transparent}
+.breeze-cat .shell{width:min(100%,326px)}
+.breeze-cat .breeze-cat-player{isolation:isolate;position:relative;display:flex;align-items:center;gap:12px;min-height:76px;padding:18px 23px 20px 22px;border:0;border-radius:25px;background:linear-gradient(180deg,#dce7ed 0%,#eff6fa 22%,#edf5fa 78%,#f8fcfe 100%);box-shadow:inset 0 2px 3px #8ca3b421,inset 0 -2px 1px #fff,0 4px 7px #516f8225;overflow:visible}
+.breeze-cat-player:before{content:"";position:absolute;z-index:-1;left:5px;bottom:0;width:20px;height:19px;background:#f4f9fc;border-radius:0 0 18px 5px;transform:skew(-26deg);box-shadow:0 2px 1px #fff}
+.breeze-cat .cat-companion{position:absolute;left:-12px;top:-47px;width:90px;height:84px;pointer-events:none}.cat-companion svg{display:block;width:100%;height:100%}
+.cat-paws{position:absolute;right:11px;top:-26px;width:43px;height:28px;color:#8ba3b2;pointer-events:none}
+.cat-yarn{position:absolute;right:5px;bottom:-4px;width:83px;height:34px;color:#728f9f;pointer-events:none}
+.breeze-cat #play,.breeze-cat #play.playing{width:32px;height:36px;flex:0 0 32px;border:0;border-radius:8px;background:transparent;box-shadow:none;color:#53778b;padding:0;z-index:1}
+.breeze-cat #play .glyph{border-top-width:9px;border-bottom-width:9px;border-left-width:15px;margin-left:2px}.breeze-cat #play.playing .glyph{width:13px;height:18px;border:0;border-left:4px solid currentColor;border-right:4px solid currentColor;margin:0}
+.breeze-cat #play:disabled{opacity:.4}.breeze-cat #play:active{transform:scale(.94)}
+.breeze-cat .wave{height:30px;flex:1;gap:4px;min-width:0}.breeze-cat .wave i{height:calc(var(--h) * .85);max-width:4px;background:#89a6b6}.breeze-cat .wave i.heard{background:#55798f}
+.breeze-cat .duration{min-width:36px;flex:0 0 auto;font-size:15px;color:#56798c;font-weight:400}
+.breeze-cat .cat-toolbar{display:grid;grid-template-columns:auto 1fr 36px;align-items:center;gap:7px;margin:7px 3px 0;min-height:36px;color:#6b8493}
+.breeze-cat #gallery-open{border:0;padding:5px 0;color:#637f90;font-size:12px;background:transparent}
+.breeze-cat #favorite-status{font-size:10px;line-height:1.4;overflow-wrap:anywhere}
+.breeze-cat .favorite{width:36px;height:36px;color:#8da3b1}.breeze-cat .favorite svg{width:23px;height:23px}.breeze-cat .favorite path{stroke-width:1.7}
+.breeze-cat .favorite[aria-pressed=true]{color:#6c90a7;filter:none}.breeze-cat .favorite[aria-pressed=true] path{fill:#adc9db88}
+.breeze-cat .text{font-size:12px;color:#5d7482}.breeze-cat .status{font-size:11px;color:#738998}
+.breeze-cat .breeze-progress,.breeze-cat #kiss{display:none!important}
+.breeze-cat #voice-gallery{color:#536e7e;border-color:#e2ebf0}.breeze-cat #voice-gallery button{color:#637f90;border-color:#dbe5eb}
+.breeze-cat button:focus-visible{outline:2px solid #648aa2;outline-offset:3px}
+@media(max-width:300px){.breeze-cat .breeze-cat-player{gap:8px;padding-inline:15px}.breeze-cat .wave{gap:3px}.breeze-cat .duration{font-size:13px;min-width:32px}}
+@media(prefers-reduced-motion:reduce){.breeze-cat .wave i{animation:none!important;transition:none}}

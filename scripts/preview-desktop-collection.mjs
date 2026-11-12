@@ -3,17 +3,20 @@ import {createServer} from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {buildDesktopSilverUi} from '../src/desktop-silver-ui.js';
+import {buildBreezeSilverUi} from '../src/breeze/app-surface.js';
+const breezePreview=process.argv.includes('--breeze');
 import {createPrivateVoiceCollection,createCollectionTools} from '../src/private-voice-collection.js';
 import {makeInlineToneFixture} from '../src/inline-fixture.js';
 const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../db/d1/007_private_voice_favorites.sql',import.meta.url),'utf8'));
-const owner='p'.repeat(43),collection=createPrivateVoiceCollection({masterKey:Buffer.alloc(32,17),client:{query:async(sql,params=[])=>db.prepare(sql).all(...params)}});
+const owner='p'.repeat(43),collection=createPrivateVoiceCollection({masterKey:Buffer.alloc(32,17),allowBreeze:breezePreview,client:{query:async(sql,params=[])=>db.prepare(sql).all(...params)}});
 const tools=createCollectionTools({collection,principal:owner});
 const fixture=makeInlineToneFixture();
-const record={...fixture,id:'voice_'+('a'.repeat(32)),text:'离线预览 · 非计费提示音，非沈述语音。\n可试播放、收藏，再刷新后打开声音馆。',voiceLabel:'沈述',source:'minimax',generated:true,desktopDirect04:true};
+const record={...fixture,id:'voice_'+('a'.repeat(32)),text:'离线预览 · 非计费提示音，非沈述语音。\n可试播放、收藏，再刷新后打开声音馆。',voiceLabel:'沈述',source:breezePreview?'breeze':'minimax',generated:true,desktopDirect04:true};
 const proof=collection.issueReceipt(owner,record);
 const demoMeta={id:record.id,title:'沈述 · 离线预览',body:record.text,createdAt:proof.createdAt,date:proof.createdAt.slice(0,10),duration:record.durationSeconds,captions:[],demo:true};
 let html=readFileSync(new URL('../ui/mcp-bubble.html',import.meta.url),'utf8').replace('const isDesktop04Bubble=false;','const isDesktop04Bubble=true;').replace('const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");','const isOAuthBubble=true;');
-html=buildDesktopSilverUi(html,{collectionEnabled:true});
+html=breezePreview?buildBreezeSilverUi({collectionEnabled:true}):buildDesktopSilverUi(html,{collectionEnabled:true});
+if(breezePreview)html=html.replace('const isOAuthBubble=window.location.href.includes("private-fixture-bubble-v1");','const isOAuthBubble=true;');
 // The demo simulates its OWN host, including when ChatGPT embeds this HTML in
 // an iframe. Never send preview RPC to the real parent window. Production UI
 // keeps the authenticated parent transport from mcp-bubble.html unchanged.
