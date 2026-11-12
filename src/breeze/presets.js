@@ -13,17 +13,29 @@ export function resolveBreezePreset(presetId='daily'){
  if(typeof presetId!=='string'||!Object.hasOwn(BREEZE_PRESETS,presetId))throw Error('breeze_unknown_preset');
  return BREEZE_PRESETS[presetId];
 }
-export function prepareBreezeSpeech({text,presetId}={}){
+export function prepareBreezeSpeech({text,presetId,kissCue}={}){
  checkText(text);const preset=resolveBreezePreset(presetId);
+ if(kissCue!==undefined&&(preset.id!=='kiss'||!['tag','mwah'].includes(kissCue)))throw Error('breeze_invalid_kiss_cue');
+ const cue=kissCue??'tag';
  if(preset.id!=='daily'){
+  const literal=preset.id==='kiss'&&cue==='mwah';
   const tag=preset.id==='kiss'?'[亲吻]':'[喘息]',other=preset.id==='kiss'?'[喘息]':'[亲吻]';
-  if(text.split(tag).length!==2||text.includes(other))throw Error('breeze_event_tag_required');
-  const [before,after]=text.split(tag),spoken=s=>/[\p{L}\p{N}]/u.test(s);
+  let before,after;
+  if(literal){
+   const matches=[...text.matchAll(/\bmwah\b/gi)];
+   if(matches.length!==1||/[\[\]［］]/u.test(text))throw Error('breeze_kiss_cue_mismatch');
+   before=text.slice(0,matches[0].index);after=text.slice(matches[0].index+matches[0][0].length);
+  }else{
+   if(text.split(tag).length!==2||text.includes(other))throw Error('breeze_event_tag_required');
+   if(preset.id==='kiss'&&/\bmwah\b/i.test(text))throw Error('breeze_kiss_cue_mismatch');
+   [before,after]=text.split(tag);
+   if(/[\[\]［］]/u.test(before+after))throw Error('breeze_unsupported_event_tag');
+  }
+  const spoken=s=>/[\p{L}\p{N}]/u.test(s);
   if(!spoken(before)||!spoken(after))throw Error('breeze_event_must_be_embedded');
-  if(/[\[\]［］]/u.test(before+after))throw Error('breeze_unsupported_event_tag');
   if(/^\s*爱爱/u.test(text))throw Error('breeze_name_after_context');
   if(preset.id==='kiss'&&(!/(亲|吻)/u.test(before)||/(旁白|音效|配音|播放亲吻)/u.test(text)))throw Error('breeze_kiss_action_required');
  }
  const {voice_id,seed,cfg_scale,instruction}=preset;
- return {preset,fields:{voice_id,seed,cfg_scale,instruction,text}};
+ return {preset,kissCue:preset.id==='kiss'?cue:null,fields:{voice_id,seed,cfg_scale,instruction,text}};
 }

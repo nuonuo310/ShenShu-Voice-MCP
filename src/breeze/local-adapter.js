@@ -33,8 +33,8 @@ export function pcm24ToWav16(pcm){
  }
  validateWav(out);return out;
 }
-export async function synthesizeLocalBreeze({text,presetId,endpoint,fetchImpl=fetch,timeoutMs=600000,signal}={}){
- const {fields}=prepareBreezeSpeech({text,presetId});const url=localBreezeEndpoint(endpoint);
+export async function synthesizeLocalBreeze({text,presetId,kissCue,endpoint,fetchImpl=fetch,timeoutMs=600000,signal}={}){
+ const {fields}=prepareBreezeSpeech({text,presetId,kissCue});const url=localBreezeEndpoint(endpoint);
  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>600000)throw Error('breeze_invalid_timeout');
  const form=new FormData();for(const [key,value] of Object.entries(fields))form.set(key,value);
  const deadline=AbortSignal.timeout(timeoutMs),cancel=signal?AbortSignal.any([signal,deadline]):deadline;

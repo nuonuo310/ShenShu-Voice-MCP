@@ -86,3 +86,44 @@ test('chat tool and worker surface remain daily-only; manual page offers exactly
  w.document.getElementById('play').click();await new Promise(r=>setImmediate(r));assert.equal(played,1);assert.equal(generations,1);
  dom.window.close();
 });
+
+test('kiss cue alternatives are exclusive, manually scoped and preserve all generation parameters',async()=>{
+ const literal=text.replace('[亲吻]','mwah，');
+ const tag=prepareBreezeSpeech({presetId:'kiss',text}),word=prepareBreezeSpeech({presetId:'kiss',kissCue:'mwah',text:literal});
+ const {text:tagText,...tagFields}=tag.fields,{text:wordText,...wordFields}=word.fields;
+ assert.deepEqual(tagFields,wordFields);assert.equal(word.kissCue,'mwah');assert.equal(tag.kissCue,'tag');
+ for(const args of [
+  {presetId:'kiss',kissCue:'bad',text},
+  {presetId:'daily',kissCue:'mwah',text:literal},
+  {presetId:'breath',kissCue:'tag',text:'走回来，[喘息]歇会。'},
+  {presetId:'kiss',kissCue:'mwah',text},
+  {presetId:'kiss',text:literal},
+  {presetId:'kiss',text:text.replace('[亲吻]','[亲吻] mwah，')},
+  {presetId:'kiss',kissCue:'mwah',text:literal+' mwah'},
+  {presetId:'kiss',kissCue:'mwah',text:'亲一下，mwah。'},
+  {presetId:'kiss',kissCue:'mwah',text:'mwah，亲到了。'}
+ ])assert.throws(()=>prepareBreezeSpeech(args));
+ let count=0;await synthesizeLocalBreeze({presetId:'kiss',kissCue:'mwah',text:literal,fetchImpl:async(url,opts)=>{count++;assert.equal(opts.body.get('text'),literal);assert.equal(opts.body.get('instruction'),tagFields.instruction);assert.equal(opts.body.get('cfg_scale'),'2.0');assert.equal(opts.body.has('kissCue'),false);return new Response(pcm,{headers:{'content-type':'audio/pcm','x-sample-rate':'24000','x-sample-format':'s16le'}});}});assert.equal(count,1);
+});
+
+test('manual cue selection reaches persisted attempt and replay without mixed or automatic generation',async()=>{
+ let count=0;const literal=text.replace('[亲吻]','mwah，'),h=await setup(async args=>{count++;assert.equal(args.kissCue,'mwah');assert.equal(args.text,literal);return wav});
+ try{
+ const request={method:'POST',token:h.token,body:{id,presetId:'kiss',kissCue:'mwah',text:literal}};
+ const r=await call(h.handler,'/api/generate',request);assert.equal(r.status,200);assert.equal(r.data.kissCue,'mwah');assert.equal(r.data.parameters.kissCue,'mwah');
+ assert.equal((await call(h.handler,'/api/generate',request)).status,200);assert.equal(count,1);
+ const mixed={...request,body:{id:'b'.repeat(32),presetId:'kiss',kissCue:'mwah',text}};assert.equal((await call(h.handler,'/api/generate',mixed)).status,400);assert.equal(count,1);
+ assert.equal((await call(h.handler,'/api/generate',{...request,body:{...request.body,kissCue:'tag',text}})).status,409);
+ }finally{await h.close();}
+ const dom=new JSDOM(buildAuditionPage('test-token'),{runScripts:'outside-only',url:'http://127.0.0.1:8082'}),w=dom.window;let generated=null;
+ w.HTMLMediaElement.prototype.pause=function(){};w.HTMLMediaElement.prototype.load=function(){};w.URL.createObjectURL=()=> 'blob:local';w.URL.revokeObjectURL=()=>{};
+ w.fetch=async(path,opts)=>{if(path==='/api/history')return {ok:true,json:async()=>({records:[]})};if(path.startsWith('/api/audio/'))return {ok:true,blob:async()=>new Blob([wav])};generated=JSON.parse(opts.body);return {ok:true,json:async()=>({...generated,status:'ready',duration:.5})};};
+ w.eval(w.document.querySelector('script').textContent);
+ assert.equal(w.document.getElementById('kiss-cue-row').hidden,true);
+ w.document.getElementById('preset').value='kiss';w.document.getElementById('preset').dispatchEvent(new w.Event('change'));
+ assert.equal(w.document.getElementById('kiss-cue-row').hidden,false);w.document.getElementById('kiss-cue').value='mwah';w.document.getElementById('kiss-cue').dispatchEvent(new w.Event('change'));
+ assert.equal(generated,null,'selection is not generation');assert.equal(w.document.getElementById('input').value,'哥哥在，我们慢慢来。','selection never rewrites text');
+ w.document.getElementById('input').value=literal;w.document.getElementById('generate').click();await new Promise(r=>setImmediate(r));assert.equal(generated.kissCue,'mwah');assert.equal(generated.text,literal);
+ w.document.querySelector('#candidates button').click();assert.equal(w.document.getElementById('kiss-cue').value,'tag','saved tag candidate resets cue explicitly');
+ dom.window.close();
+});

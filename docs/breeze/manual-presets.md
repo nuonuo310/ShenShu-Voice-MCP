@@ -12,7 +12,7 @@ or real Call. Other emotions have no buttons, IDs or usable placeholders.
 - daily retains the exact old multipart fields: shenshu_04_natural, seed 7,
   cfg 1.2 and the unchanged natural Chinese daily instruction.
 - kiss and breath both use seed 7 / cfg 2.0, but have distinct instructions
-  and text rules. Exactly one appropriate tag must occur between spoken text;
+  and text rules. By default exactly one appropriate tag must occur between spoken text;
   mixed, duplicate, unknown or trailing tags are rejected. Event text cannot
   begin with 爱爱. Kiss requires an established kiss action before the tag and
   rejects explicit sound-effect/narration wording. Breath must have spoken text
@@ -142,3 +142,41 @@ V3 adds one instruction passage for continuous soft, lightly smiling delivery
 and adult voice identity. V2 lip-action instructions, voice, seed, cfg, daily and
 breath are unchanged. Compare on the most recent opening-phrase variant, with
 identical text; do not also change the sentence. New V3 audio is NOT_RUN here.
+
+## Manual kiss cue comparison — tag OR literal mwah
+
+The owner heard two kiss-like sounds when both `[亲吻]` and `mwah` were
+supplied, with daily/lightly smiling delivery. It is a listening report, not
+proof that each cue independently fired. The preceding V3 tag-only attempt
+was judged warm with good pace but an ambiguous hum-to-vowel event.
+
+The page now offers a secondary control only under kiss: `tag` (default) or
+`mwah`. This is NOT a fourth preset or an automatic emotion option. Only the
+manual audition API/adapter accepts optional `kissCue`; model-visible tool,
+cloud worker, daily and breath remain unchanged. Unknown cue or cue specified
+for non-kiss fails. In tag mode require one embedded `[亲吻]` and reject a
+literal mwah; in mwah mode require one embedded whole-word mwah (case-insensitive)
+and no bracketed tags. Both need preceding kiss-action text, following speech
+and context before 爱爱. No silent replacement, injected sound file or extra
+generation. Candidate-fill buttons explicitly select tag mode.
+
+The instruction is byte-identical across both cue choices (including its
+existing tag wording); only input text changes. Same voice/seed 7/cfg 2.0. This
+is a controlled text-cue experiment, not a promise that a literal word becomes
+a nonverbal event. Human review must reject read-aloud letters/syllables, two
+events, timbre changes or lost warmth. In particular, no automatically chosen
+cue and no new Call access.
+
+New private request manifests retain kissCue and exact text/parameters; history
+labels the choice. Old manifests read as tag and all old clips remain playable,
+including past mixed-cue attempts. Default tag request digests remain unchanged;
+new mwah digests bind the cue. Existing IDs never synthesize again.
+
+Validation: full local suite 529/529 PASS, including literal/tag exclusivity,
+unknown/non-kiss cue rejection, exact unchanged multipart instruction/params,
+manual selector payload, no selection-triggered synthesis, persisted cue,
+idempotent replay and conflicting same-ID cue. Real new mwah-only listening
+remains NOT_RUN in this environment. Original source model card and C++ runtime
+README explain inline descriptive events but do not guarantee a stable kiss:
+https://huggingface.co/BreezeBlue/Breeze-TTS-2/blob/main/README.md
+https://github.com/HoppouAI/Breeze-TTS-2.cpp/blob/main/README.md

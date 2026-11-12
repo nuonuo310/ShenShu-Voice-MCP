@@ -20,7 +20,7 @@ export async function createBreezeAuditionHandler({directory,synthesize=synthesi
   const request=await read(id,'request.json');let result;
   try{result=await read(id,'result.json');}catch{result={status:'unknown'};}
   let review=null;try{review=await read(id,'review.json');}catch{}
-  return {id,presetId:request.presetId,text:request.text,parameters:request.parameters,createdAt:request.createdAt,...result,review};
+  return {id,presetId:request.presetId,kissCue:request.presetId==='kiss'?(request.parameters.kissCue??'tag'):null,text:request.text,parameters:request.parameters,createdAt:request.createdAt,...result,review};
  }
  return async(req,res)=>{
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');
@@ -60,9 +60,9 @@ export async function createBreezeAuditionHandler({directory,synthesize=synthesi
     const temporary=join(directory,input.id,randomBytes(8).toString('hex')+'.tmp');await writeFile(temporary,json(review),{mode:0o600});await rename(temporary,join(directory,input.id,'review.json'));
     return reply(200,{id:input.id,review});
    }
-   if(!['id,presetId,text','id,text'].includes(Object.keys(input).sort().join(',')))return reply(400,{error:'invalid_request'});
+   if(!Object.hasOwn(input,'text')||Object.keys(input).some(k=>!['id','presetId','text','kissCue'].includes(k)))return reply(400,{error:'invalid_request'});
    let prepared;try{prepared=prepareBreezeSpeech(input);}catch(e){return reply(400,{error:e.message});}
-   const {preset,fields}=prepared,requestDigest=digest(JSON.stringify([preset.id,input.text]));
+   const {preset,fields,kissCue}=prepared,requestDigest=digest(JSON.stringify(kissCue==='mwah'?[preset.id,input.text,'mwah']:[preset.id,input.text]));
    try{
     const old=await read(input.id,'request.json');if(old.requestDigest!==requestDigest)return reply(409,{error:'request_conflict'});
     return reply(200,await record(input.id)); // Never synthesize an existing attempt again.
@@ -71,11 +71,11 @@ export async function createBreezeAuditionHandler({directory,synthesize=synthesi
    busy=true;
    try{
     const target=join(directory,input.id);await mkdir(target,{mode:0o700});
-    const request={id:input.id,presetId:preset.id,text:input.text,requestDigest,createdAt:new Date().toISOString(),parameters:{voice_id:fields.voice_id,seed:fields.seed,cfg_scale:fields.cfg_scale,instruction:fields.instruction,rules:preset.rules,model:'Q8_0',backend:'Intel UHD 770 Vulkan',hardwareDeclaration:'owner-baseline-not-probed'},reviewStatus:preset.reviewStatus};
+    const request={id:input.id,presetId:preset.id,text:input.text,requestDigest,createdAt:new Date().toISOString(),parameters:{...(preset.id==='kiss'?{kissCue}:{}),voice_id:fields.voice_id,seed:fields.seed,cfg_scale:fields.cfg_scale,instruction:fields.instruction,rules:preset.rules,model:'Q8_0',backend:'Intel UHD 770 Vulkan',hardwareDeclaration:'owner-baseline-not-probed'},reviewStatus:preset.reviewStatus};
     // Persist the attempt before contacting Breeze. A crash leaves UNKNOWN, no retry.
     await writeFile(join(target,'request.json'),json(request),{flag:'wx',mode:0o600});
     logResult(preset,'generating');let audio;
-    try{audio=await synthesize({text:input.text,presetId:preset.id});validateWav(audio);}catch{
+    try{audio=await synthesize({text:input.text,presetId:preset.id,...(preset.id==='kiss'?{kissCue}:{})});validateWav(audio);}catch{
      await writeFile(join(target,'result.json'),json({status:'failed-or-unknown'}),{flag:'wx',mode:0o600});logResult(preset,'failed-or-unknown');return reply(502,{id:input.id,status:'failed-or-unknown'});
     }
     await writeFile(join(target,'audio.wav'),audio,{flag:'wx',mode:0o600});
