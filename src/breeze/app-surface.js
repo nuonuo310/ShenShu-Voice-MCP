@@ -33,6 +33,7 @@ export function createBreezeTools({principal,jobs,collection}={}){
  */
 export function buildBreezeSilverUi({collectionEnabled=false}={}){
  let html=readFileSync(new URL('../../ui/mcp-bubble.html',import.meta.url),'utf8');
+ html=html.replace('const isDesktop04Bubble=false;','const isDesktop04Bubble=true;');
  html=buildDesktopSilverUi(html,{collectionEnabled,allowBreeze:true});
  const addon=readFileSync(new URL('../../ui/breeze-pending.js',import.meta.url),'utf8');
  html=html.replace('if(msg.method==="ui/notifications/tool-result"){','if(msg.method==="ui/notifications/tool-result"){\n    if(msg.params?.structuredContent?.breezePending){void breezePending(msg.params);return;}');
