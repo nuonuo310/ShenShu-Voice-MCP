@@ -1,3 +1,4 @@
+import {composeBreezeRuntime} from './src/breeze/runtime.js';
 import {composeDesktopCollection} from './src/desktop-collection-runtime.js';
 import { createServer as createHttpServer } from "node:http";
 import { readFileSync } from "node:fs";
@@ -194,6 +195,7 @@ export function createShenShuHttpServer({
   protectedResourceIdentityVerifier = null,
   desktop04Factory = null,
   voiceCollection = null,
+  breezeRuntime = null,
 } = {}) {
   if (nonbillableClosure !== null &&
       (!nonbillableClosure ||
@@ -234,6 +236,8 @@ export function createShenShuHttpServer({
   }
   const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
 
+  if (identity.ok && identity.staging && breezeRuntime && await breezeRuntime.workerHandler(req,res)) return;
+
   // Separate zero-provider, durable-one-shot probe. Dormant by default and
   // never reachable through paid routes or source/caller-controlled flags.
   if (kodoProbe && await kodoProbe.handleRequest(req, res, url)) return;
@@ -266,6 +270,7 @@ export function createShenShuHttpServer({
     identityVerifier: protectedResourceIdentityVerifier,
     desktop04Factory,
     voiceCollection,
+    breezeJobs:breezeRuntime?.jobs ?? null,
   })) return;
 
   if (req.method === "OPTIONS" && url.pathname === MCP_PATH) {
@@ -388,10 +393,12 @@ export async function createShenShuRuntimeServer({
     createD1Client: createComposedD1Client,
     ...(clock === undefined ? {} : { clock }),
   });
+  const breezeRuntime=await composeBreezeRuntime({env,createD1Client:createComposedD1Client,identityVerifier:composed.identityVerifier});
   const voiceCollection = desktop04.factory ? await composeDesktopCollection({env,identityVerifier:composed.identityVerifier,createD1Client:createComposedD1Client}) : null;
   const server = createShenShuHttpServer({
     env,
     voiceCollection,
+    breezeRuntime,
     fetchImpl,
     kodoProbe,
     nonbillableClosure: composed.nonbillableClosure,

@@ -6,7 +6,7 @@ export async function composeDesktopCollection({env,identityVerifier,createD1Cli
  try{
   const raw=env[PRIVATE_TEXT_MASTER_KEY_ENV];
   const masterKey=Buffer.from(raw,/^[A-Za-z0-9_-]{43}$/.test(raw)?'base64url':'base64');
-  const collection=createPrivateVoiceCollection({client:createD1Client({env}),masterKey});
+  const collection=createPrivateVoiceCollection({client:createD1Client({env}),masterKey,allowBreeze:env.SHENSHU_BREEZE_ENABLED==='1'});
   await collection.verifySchema();return collection;
  }catch{return null;}
 }

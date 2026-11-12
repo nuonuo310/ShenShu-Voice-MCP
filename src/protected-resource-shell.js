@@ -36,6 +36,7 @@ export async function handleProtectedResourceShell(req, res, pathname, {
   identityVerifier = null,
   desktop04Factory = null,
   voiceCollection = null,
+  breezeJobs = null,
 } = {}) {
   const isMetadataRoute=pathname === RESOURCE_METADATA_PATH;
   const isPaidRoute=pathname === PAID_PATH;
@@ -76,7 +77,8 @@ export async function handleProtectedResourceShell(req, res, pathname, {
         identityVerifier,
         proposalBroker:identity.staging ? proposalBroker : null,
         desktop04Factory:identity.staging ? desktop04Factory : null,
-        voiceCollection:identity.staging ? voiceCollection : null
+        voiceCollection:identity.staging ? voiceCollection : null,
+        breezeJobs:identity.staging ? breezeJobs : null
       });
       return true;
     }
